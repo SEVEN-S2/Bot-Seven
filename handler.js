@@ -1,6 +1,7 @@
 import './config.js'
 import { smsg } from './lib/simple.js'
 import chalk from 'chalk'
+import { isAntilinkActive } from './plugins/group-welcome.js'
 
 /**
  * Roteia e executa os comandos dos plugins
@@ -35,6 +36,25 @@ export async function handler(conn, rawMsg) {
     // O próprio número do bot (fromMe) e os números configurados são considerados Dono
     const senderNumber = (m.sender || '').replace(/[^0-9]/g, '')
     const isOwner = m.fromMe || (global.owner || []).some(([number]) => number === senderNumber)
+
+    // Antilink: detecta e remove links de grupos WhatsApp
+    if (m.isGroup && isAntilinkActive && isAntilinkActive(m.chat)) {
+      const linkRegex = /chat\.whatsapp\.com\/[a-zA-Z0-9]+/i
+      if (linkRegex.test(m.text)) {
+        let groupMeta = await conn.groupMetadata(m.chat)
+        let senderIsAdmin = groupMeta.participants.find(p => p.id === m.sender)?.admin
+        let botId = conn.user.id
+        let botIsAdmin = groupMeta.participants.find(p => p.id === botId)?.admin
+        if (!senderIsAdmin && botIsAdmin) {
+          await conn.sendMessage(m.chat, { delete: m.key })
+          await conn.sendMessage(m.chat, {
+            text: `⚠️ @${m.sender.split('@')[0]}, links de grupos são *proibidos* neste chat!`,
+            mentions: [m.sender]
+          })
+        }
+        return
+      }
+    }
 
     // Log formatado no terminal
     if (m.text && isPrefix) {

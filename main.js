@@ -16,6 +16,7 @@ import syntaxError from 'syntax-error'
 import chalk from 'chalk'
 import { extendSocket } from './lib/simple.js'
 import { handler } from './handler.js'
+import { groupEvents } from './plugins/group-welcome.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const pluginFolder = join(__dirname, 'plugins')
@@ -157,6 +158,15 @@ async function startBot() {
     if (type !== 'notify') return
     for (let rawMsg of messages) {
       await handler(conn, rawMsg)
+    }
+  })
+
+  // Eventos de grupo (Welcome, etc)
+  conn.ev.on('group-participants.update', async (update) => {
+    try {
+      await groupEvents(conn, update)
+    } catch (e) {
+      console.error(chalk.red('[ERRO EVENTO GRUPO]:'), e.message)
     }
   })
 }
