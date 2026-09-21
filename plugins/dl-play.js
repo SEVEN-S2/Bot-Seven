@@ -1,38 +1,38 @@
 import axios from 'axios'
 
+// ─────────────────────────────────────────────────
+// Estado pendente: chave = "chatId|senderId"
+// ─────────────────────────────────────────────────
+const pending = new Map()
+const TIMEOUT_MS = 60000 // 60 segundos para o usuário escolher
+
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
-  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+  'Accept-Language': 'pt-BR,pt;q=0.9'
 }
 
 // ─────────────────────────────────────────────────
-// 1. Busca no YouTube via scraping (sem API Key)
+// Busca no YouTube via scraping
 // ─────────────────────────────────────────────────
 async function ytSearch(query) {
   let res = await axios.get(
     `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`,
     { headers: HEADERS, timeout: 15000 }
   )
-
   let match = res.data.match(/var ytInitialData = (.+?);<\/script>/)
-  if (!match) throw new Error('ytInitialData não encontrado')
+  if (!match) throw new Error('Resposta do YouTube inválida')
   let data = JSON.parse(match[1])
-
   let contents = data?.contents
-    ?.twoColumnSearchResultsRenderer
-    ?.primaryContents
-    ?.sectionListRenderer
-    ?.contents[0]
-    ?.itemSectionRenderer
-    ?.contents || []
+    ?.twoColumnSearchResultsRenderer?.primaryContents
+    ?.sectionListRenderer?.contents[0]
+    ?.itemSectionRenderer?.contents || []
 
   let video = contents
     .filter(v => v.videoRenderer)
     .map(v => v.videoRenderer)
-    .find(v => v.videoId && v.lengthText) // garante que tem duração (não é live)
+    .find(v => v.videoId && v.lengthText)
 
   if (!video) throw new Error('Nenhum vídeo encontrado')
-
   return {
     id: video.videoId,
     title: video.title?.runs?.[0]?.text || 'Sem título',
@@ -44,141 +44,149 @@ async function ytSearch(query) {
 }
 
 // ─────────────────────────────────────────────────
-// 2. Download via cobalt.tools (API open-source)
+// Download via cobalt.tools
 // ─────────────────────────────────────────────────
-async function cobaltDownload(videoId, isVideo = false) {
+async function cobaltDownload(videoId, mode) {
+  // mode: 'audio' | 'mute' | 'auto'
   let res = await axios.post('https://api.cobalt.tools/', {
     url: `https://www.youtube.com/watch?v=${videoId}`,
-    downloadMode: isVideo ? 'auto' : 'audio',
+    downloadMode: mode === 'video' ? 'auto' : 'audio',
     audioFormat: 'mp3',
     videoQuality: '720',
     filenameStyle: 'basic'
   }, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     timeout: 25000
   })
-
   let status = res.data?.status
   let url = res.data?.url
-
-  if ((status === 'stream' || status === 'tunnel' || status === 'redirect') && url) {
-    return url
-  }
-  throw new Error(`cobalt retornou status: ${status}`)
+  if ((status === 'stream' || status === 'tunnel' || status === 'redirect') && url) return url
+  throw new Error(`cobalt status: ${status}`)
 }
 
 // ─────────────────────────────────────────────────
-// 3. Fallback: Download via y2mate scraping
+// Fallback: y2mate scraping
 // ─────────────────────────────────────────────────
-async function y2mateDownload(videoId, isVideo = false) {
+async function y2mateDownload(videoId, mode) {
   let url = `https://www.youtube.com/watch?v=${videoId}`
-  let format = isVideo ? 'mp4' : 'mp3'
-
-  // Passo 1: analisar vídeo
   let analyzeRes = await axios.post(
     'https://www.y2mate.com/mates/analyzeV2/ajax',
     new URLSearchParams({ k_query: url, k_page: 'home', hl: 'en', q_auto: '0' }),
     { headers: { ...HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 }
   )
-
   let links = analyzeRes.data?.links
-  if (!links) throw new Error('y2mate: sem links na resposta')
+  if (!links) throw new Error('y2mate: sem links')
+  let key = mode === 'video'
+    ? (links?.mp4?.['720p']?.k || links?.mp4?.['480p']?.k || links?.mp4?.['360p']?.k)
+    : (links?.mp3?.mp3128?.k || links?.mp3?.mp3256?.k)
+  if (!key) throw new Error('y2mate: chave não encontrada')
 
-  let key
-  if (!isVideo) {
-    key = links?.mp3?.mp3128?.k || links?.mp3?.mp3256?.k
-  } else {
-    key = links?.mp4?.['720p']?.k || links?.mp4?.['480p']?.k || links?.mp4?.['360p']?.k
-  }
-  if (!key) throw new Error(`y2mate: chave ${format} não encontrada`)
-
-  // Passo 2: converter e pegar link
   let convertRes = await axios.post(
     'https://www.y2mate.com/mates/convertV2/index',
     new URLSearchParams({ vid: videoId, k: key }),
     { headers: { ...HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 30000 }
   )
-
   let dlink = convertRes.data?.dlink
   if (!dlink) throw new Error('y2mate: dlink não encontrado')
   return dlink
 }
 
 // ─────────────────────────────────────────────────
-// 4. Fallback 2: loader.to scraping (com polling)
+// Orquestrador com fallbacks
 // ─────────────────────────────────────────────────
-async function loaderDownload(videoId, isVideo = false) {
-  let format = isVideo ? 'mp4' : 'mp3'
-  let url = `https://www.youtube.com/watch?v=${videoId}`
-
-  let startRes = await axios.post(
-    'https://loader.to/ajax/download.php',
-    new URLSearchParams({ format, url }),
-    { headers: { ...HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 }
-  )
-
-  let id = startRes.data?.id
-  if (!id) throw new Error('loader.to: id não retornado')
-
-  // Poll até terminar (máx 30 tentativas × 2s = 60s)
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 2000))
-    let progress = await axios.get(`https://loader.to/ajax/progress.php?id=${id}`, { timeout: 10000 })
-    let p = progress.data
-
-    if (p?.success === 1 || p?.progress >= 100) {
-      if (!p?.download_url) throw new Error('loader.to: sem download_url')
-      return p.download_url
-    }
+async function getDownloadUrl(videoId, mode) {
+  let errs = []
+  for (let [name, fn] of [['cobalt', cobaltDownload], ['y2mate', y2mateDownload]]) {
+    try {
+      let url = await fn(videoId, mode)
+      console.log(`[PLAY] ${name} OK`)
+      return url
+    } catch (e) { errs.push(`${name}: ${e.message}`) }
   }
-  throw new Error('loader.to: timeout na conversão')
+  throw new Error(errs.join(' | '))
 }
 
 // ─────────────────────────────────────────────────
-// Orquestrador: tenta APIs em ordem
+// Processamento do download após escolha
 // ─────────────────────────────────────────────────
-async function getDownloadUrl(videoId, isVideo) {
-  let errors = []
+async function processDownload(conn, m, video, choice) {
+  let mode, label
+  if (choice === '1') { mode = 'video'; label = '🎬 Vídeo MP4' }
+  else if (choice === '2') { mode = 'audio'; label = '🎵 Áudio MP3' }
+  else { mode = 'audio'; label = '📄 Áudio (documento)' }
 
-  // API 1: cobalt.tools
+  await conn.sendMessage(m.chat, {
+    text: `⏳ Baixando *${label}*...\n\n🎬 *${video.title}*`
+  }, { quoted: m })
+
   try {
-    let url = await cobaltDownload(videoId, isVideo)
-    console.log('[PLAY] cobalt.tools OK')
-    return url
-  } catch (e) { errors.push(`cobalt: ${e.message}`) }
+    let dlUrl = await getDownloadUrl(video.id, mode)
+    let mediaRes = await axios.get(dlUrl, {
+      responseType: 'arraybuffer',
+      timeout: 120000,
+      headers: HEADERS
+    })
+    let buf = Buffer.from(mediaRes.data)
+    let safeName = video.title.replace(/[^\w\s]/gi, '').trim() || 'audio'
 
-  // API 2: y2mate
-  try {
-    let url = await y2mateDownload(videoId, isVideo)
-    console.log('[PLAY] y2mate OK')
-    return url
-  } catch (e) { errors.push(`y2mate: ${e.message}`) }
+    if (choice === '1') {
+      // Vídeo MP4 como documento
+      await conn.sendMessage(m.chat, {
+        document: buf,
+        mimetype: 'video/mp4',
+        fileName: `${safeName}.mp4`,
+        caption: `🎬 *${video.title}*\n👤 ${video.author}`
+      }, { quoted: m })
+    } else if (choice === '2') {
+      // Áudio MP3 nativo
+      await conn.sendMessage(m.chat, {
+        audio: buf,
+        mimetype: 'audio/mpeg',
+        ptt: false
+      }, { quoted: m })
+    } else {
+      // Áudio como documento
+      await conn.sendMessage(m.chat, {
+        document: buf,
+        mimetype: 'audio/mpeg',
+        fileName: `${safeName}.mp3`,
+        caption: `🎵 *${video.title}*\n👤 ${video.author}`
+      }, { quoted: m })
+    }
 
-  // API 3: loader.to
-  try {
-    let url = await loaderDownload(videoId, isVideo)
-    console.log('[PLAY] loader.to OK')
-    return url
-  } catch (e) { errors.push(`loader: ${e.message}`) }
-
-  throw new Error('Todas as APIs falharam:\n' + errors.join('\n'))
+    await m.react('✅')
+  } catch (err) {
+    console.error('[PLAY DL ERRO]:', err.message)
+    await m.react('❌')
+    await m.reply(`❌ Falha no download: ${err.message.split('|')[0]}\n\nTente novamente! 🔄`)
+  }
 }
 
 // ─────────────────────────────────────────────────
 // HANDLER PRINCIPAL
 // ─────────────────────────────────────────────────
-let handler = async (m, { conn, text, usedPrefix, command }) => {
-  let isVideo = ['mp4', 'playvideo', 'ytmp4', 'video'].includes(command)
+let handler = async (m, { conn, text, command }) => {
+  let rawText = (m.text || '').trim()
+  let key = `${m.chat}|${m.sender}`
+
+  // ── Captura a resposta 1 / 2 / 3 do usuário ──
+  if (['1', '2', '3'].includes(rawText) && pending.has(key)) {
+    let { video, timer } = pending.get(key)
+    clearTimeout(timer)
+    pending.delete(key)
+    await processDownload(conn, m, video, rawText)
+    return
+  }
+
+  // ── Só continua se veio via comando com prefixo ──
+  if (!handler.command.includes(command)) return
 
   if (!text) {
     return m.reply(
       `🎵 *YouTube Downloader*\n\n` +
-      `🎵 *MP3 (Áudio):*\n*${usedPrefix}play* Nome da música\n\n` +
-      `🎬 *MP4 (Vídeo):*\n*${usedPrefix}mp4* Nome do vídeo\n\n` +
-      `*Exemplos:*\n${usedPrefix}play Shape of You\n${usedPrefix}mp4 Funny cats`
+      `Digite o nome da música ou vídeo:\n\n` +
+      `*.play* Nome da música\n*.mp4* Nome do vídeo\n\n` +
+      `*Exemplos:*\n.play Shape of You\n.mp4 Funny cats`
     )
   }
 
@@ -191,7 +199,7 @@ let handler = async (m, { conn, text, usedPrefix, command }) => {
     return m.reply(`❌ Erro ao buscar no YouTube: ${err.message}`)
   }
 
-  // Enviar thumbnail + info
+  // Enviar thumbnail + informações
   try {
     let thumbRes = await axios.get(video.thumbnail, { responseType: 'arraybuffer', timeout: 10000 })
     await conn.sendMessage(m.chat, {
@@ -201,54 +209,37 @@ let handler = async (m, { conn, text, usedPrefix, command }) => {
         `👤 *Canal:* ${video.author}\n` +
         `⏱️ *Duração:* ${video.duration}\n` +
         `👁️ *Views:* ${video.views}\n` +
-        `🔗 https://youtu.be/${video.id}\n\n` +
-        (isVideo ? `⬇️ Baixando *vídeo MP4*... aguarde` : `⬇️ Baixando *áudio MP3*... aguarde`)
+        `🔗 https://youtu.be/${video.id}`
     }, { quoted: m })
   } catch {
-    await m.reply(`🎬 *${video.title}*\n⬇️ Baixando... aguarde`)
+    await m.reply(`🎬 *${video.title}* (${video.duration})\n👤 ${video.author}`)
   }
+
+  // Perguntar formato
+  await conn.sendMessage(m.chat, {
+    text:
+      `📌 *Escolha o formato de download:*\n\n` +
+      `1️⃣ Vídeo MP4\n` +
+      `2️⃣ Áudio MP3\n` +
+      `3️⃣ Áudio (documento)\n\n` +
+      `_Responda com *1*, *2* ou *3*. Expira em 60 segundos._`
+  }, { quoted: m })
 
   await m.react('⏳')
 
-  try {
-    let dlUrl = await getDownloadUrl(video.id, isVideo)
-    let mediaRes = await axios.get(dlUrl, {
-      responseType: 'arraybuffer',
-      timeout: 120000,
-      headers: HEADERS
-    })
-
-    let safeName = video.title.replace(/[^\w\s]/gi, '').trim()
-
-    if (isVideo) {
-      await conn.sendMessage(m.chat, {
-        document: Buffer.from(mediaRes.data),
-        mimetype: 'video/mp4',
-        fileName: `${safeName}.mp4`,
-        caption: `🎬 *${video.title}*`
-      }, { quoted: m })
-    } else {
-      await conn.sendMessage(m.chat, {
-        audio: Buffer.from(mediaRes.data),
-        mimetype: 'audio/mpeg',
-        ptt: false
-      }, { quoted: m })
+  // Salvar estado pendente com timeout de 60s
+  let timer = setTimeout(() => {
+    if (pending.has(key)) {
+      pending.delete(key)
     }
+  }, TIMEOUT_MS)
 
-    await m.react('✅')
-  } catch (err) {
-    console.error('[PLAY ERRO FINAL]:', err.message)
-    await m.react('❌')
-    await m.reply(
-      `❌ *Falha no download.*\n\n` +
-      `Possíveis causas:\n• Vídeo com restrição de região ou idade\n• Vídeo muito longo (acima de 15 min)\n• Servidores temporariamente sobrecarregados\n\n` +
-      `Tente novamente! 🔄`
-    )
-  }
+  pending.set(key, { video, timer })
 }
 
 handler.help = ['play <música>', 'mp4 <vídeo>']
 handler.tags = ['downloader']
 handler.command = ['play', 'musica', 'ytmp3', 'mp3', 'mp4', 'playvideo', 'ytmp4', 'video']
+handler.all = true // necessário para capturar as respostas 1, 2, 3
 
 export default handler

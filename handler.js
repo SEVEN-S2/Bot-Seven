@@ -120,6 +120,24 @@ export async function handler(conn, rawMsg) {
         break
       }
     }
+
+    // Plugins 'all': rodam em TODA mensagem sem prefixo (ex: captura de respostas 1/2/3)
+    for (let name in global.plugins) {
+      let plugin = global.plugins[name]
+      if (!plugin || !plugin.all || plugin.disabled) continue
+      try {
+        await (plugin.default || plugin)(m, {
+          conn,
+          args,
+          text: noPrefixText || m.text || '',
+          usedPrefix,
+          command: cmd,
+          isOwner
+        })
+      } catch (err) {
+        console.error(chalk.red(`[ERRO PLUGIN ALL ${name}]:`), err.message)
+      }
+    }
   } catch (e) {
     console.error(chalk.red('[ERRO NO HANDLER]:'), e)
   }
