@@ -37,29 +37,34 @@ async function askAI(chatId, userMessage) {
 
   // Tenta APIs em ordem
   let apis = [
+    // API 1: Pollinations.ai — rápida, gratuita, sem key (OpenAI-compatible)
     async () => {
-      let res = await axios.post('https://aichat-api.vercel.app/chatgpt',
-        { messages },
-        { timeout: 20000 }
-      )
-      return res.data?.result || res.data?.message || res.data?.content
-    },
-    async () => {
-      let res = await axios.post('https://api.openai-proxy.me/v1/chat/completions', {
-        model: 'gpt-3.5-turbo',
+      let res = await axios.post('https://text.pollinations.ai/openai', {
+        model: 'openai-large',
         messages,
-        max_tokens: 500
+        max_tokens: 500,
+        temperature: 0.7
       }, {
-        headers: { 'Authorization': 'Bearer free', 'Content-Type': 'application/json' },
-        timeout: 20000
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
       })
       return res.data?.choices?.[0]?.message?.content
     },
+    // API 2: Pollinations GET simples (fallback rápido)
     async () => {
-      let last = history.slice(-3).map(h => `${h.role === 'user' ? 'Usuário' : 'Assistente'}: ${h.content}`).join('\n')
+      let systemEncoded = encodeURIComponent(SYSTEM_PROMPT)
+      let msgEncoded = encodeURIComponent(userMessage)
       let res = await axios.get(
-        `https://api.popcat.xyz/chatbot?msg=${encodeURIComponent(userMessage)}&owner=${encodeURIComponent('BOT SEVEN')}&botname=${encodeURIComponent(global.botname || 'SEVEN')}`,
+        `https://text.pollinations.ai/${msgEncoded}?model=openai&system=${systemEncoded}&seed=42`,
         { timeout: 15000 }
+      )
+      return typeof res.data === 'string' ? res.data : null
+    },
+    // API 3: PopCat (simples, sem contexto)
+    async () => {
+      let res = await axios.get(
+        `https://api.popcat.xyz/chatbot?msg=${encodeURIComponent(userMessage)}&owner=Seven&botname=${encodeURIComponent(global.botname || 'SEVEN')}`,
+        { timeout: 12000 }
       )
       return res.data?.response
     }
