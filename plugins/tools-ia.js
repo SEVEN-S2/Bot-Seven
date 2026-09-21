@@ -1,90 +1,125 @@
 import axios from 'axios'
 
 // ─────────────────────────────────────────────────────
-// Estado: chats com IA ativa e histórico de conversa
+// Estado por chat
 // ─────────────────────────────────────────────────────
-const aiChats = new Map()    // chatId -> true/false
-const chatHistory = new Map() // chatId -> Array<{ role, content }>
-const MAX_HISTORY = 10       // máximo de mensagens no histórico de contexto
+const aiChats = new Map()
+const chatHistory = new Map()
+const MAX_HISTORY = 8
 
-const SYSTEM_PROMPT = `Você é ${global.botname || 'BOT SEVEN'}, um assistente de WhatsApp inteligente, amigável e direto. 
-Responda sempre em português brasileiro, de forma natural e conversacional.
-Seja conciso mas completo. Use emojis moderadamente para deixar as respostas mais expressivas.
-Não use markdown excessivo pois a resposta será lida em WhatsApp.`
+const SYSTEM_PROMPT = `Você é ${global.botname || 'BOT SEVEN'}, um assistente de WhatsApp inteligente e amigável. Responda sempre em português brasileiro de forma natural e direta. Seja conciso. Use emojis moderadamente.`
 
 // ─────────────────────────────────────────────────────
-// Chamada à API de IA (sem API Key)
+// API 1: DuckDuckGo AI (sem key, scraping de SSE)
 // ─────────────────────────────────────────────────────
-async function askAI(chatId, userMessage) {
-  // Recupera ou inicia histórico do chat
-  if (!chatHistory.has(chatId)) {
-    chatHistory.set(chatId, [])
-  }
-  let history = chatHistory.get(chatId)
+async function duckAI(userMessage, history) {
+  // Passo 1: obter token VQD
+  let statusRes = await axios.get('https://duckduckgo.com/duckchat/v1/status', {
+    headers: {
+      'x-vqd-accept': '1',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    },
+    timeout: 10000
+  })
+  let vqd = statusRes.headers['x-vqd-4']
+  if (!vqd) throw new Error('VQD token não obtido')
 
-  // Adiciona mensagem do usuário ao histórico
-  history.push({ role: 'user', content: userMessage })
-
-  // Limita o histórico para não ultrapassar o contexto
-  if (history.length > MAX_HISTORY * 2) {
-    history.splice(0, 2)
-  }
-
+  // Montar mensagens com contexto
   let messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...history
+    ...history.slice(-MAX_HISTORY),
+    { role: 'user', content: userMessage }
   ]
 
-  // Tenta APIs em ordem
-  let apis = [
-    // API 1: Pollinations.ai — rápida, gratuita, sem key (OpenAI-compatible)
-    async () => {
-      let res = await axios.post('https://text.pollinations.ai/openai', {
-        model: 'openai-large',
-        messages,
-        max_tokens: 500,
-        temperature: 0.7
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 15000
-      })
-      return res.data?.choices?.[0]?.message?.content
+  // Passo 2: enviar mensagem e receber SSE
+  let chatRes = await axios.post('https://duckduckgo.com/duckchat/v1/chat', {
+    model: 'gpt-4o-mini',
+    messages
+  }, {
+    headers: {
+      'x-vqd-4': vqd,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0',
+      'Accept': 'text/event-stream'
     },
-    // API 2: Pollinations GET simples (fallback rápido)
-    async () => {
-      let systemEncoded = encodeURIComponent(SYSTEM_PROMPT)
-      let msgEncoded = encodeURIComponent(userMessage)
-      let res = await axios.get(
-        `https://text.pollinations.ai/${msgEncoded}?model=openai&system=${systemEncoded}&seed=42`,
-        { timeout: 15000 }
-      )
-      return typeof res.data === 'string' ? res.data : null
-    },
-    // API 3: PopCat (simples, sem contexto)
-    async () => {
-      let res = await axios.get(
-        `https://api.popcat.xyz/chatbot?msg=${encodeURIComponent(userMessage)}&owner=Seven&botname=${encodeURIComponent(global.botname || 'SEVEN')}`,
-        { timeout: 12000 }
-      )
-      return res.data?.response
-    }
-  ]
+    responseType: 'text',
+    timeout: 30000
+  })
 
-  let reply = null
-  for (let apiFn of apis) {
+  // Parsear SSE
+  let raw = typeof chatRes.data === 'string' ? chatRes.data : JSON.stringify(chatRes.data)
+  let lines = raw.split('\n').filter(l => l.startsWith('data: '))
+  let reply = ''
+  for (let line of lines) {
+    let json = line.slice(6).trim()
+    if (json === '[DONE]') break
     try {
-      reply = await apiFn()
-      if (reply && reply.trim()) break
+      let parsed = JSON.parse(json)
+      if (parsed.message) reply += parsed.message
     } catch {}
   }
+  if (!reply.trim()) throw new Error('DuckDuckGo: resposta vazia')
+  return reply.trim()
+}
 
-  if (!reply || !reply.trim()) throw new Error('Nenhuma API respondeu')
+// ─────────────────────────────────────────────────────
+// API 2: Pollinations.ai GET (fallback)
+// ─────────────────────────────────────────────────────
+async function pollinationsAI(userMessage) {
+  let res = await axios.get(
+    `https://text.pollinations.ai/${encodeURIComponent(userMessage)}?model=openai&system=${encodeURIComponent(SYSTEM_PROMPT)}`,
+    { timeout: 15000 }
+  )
+  let text = typeof res.data === 'string' ? res.data : res.data?.text
+  if (!text?.trim()) throw new Error('Pollinations: sem resposta')
+  return text.trim()
+}
 
-  // Adiciona resposta da IA ao histórico
+// ─────────────────────────────────────────────────────
+// API 3: Popcat (fallback simples sem contexto)
+// ─────────────────────────────────────────────────────
+async function popcatAI(userMessage) {
+  let res = await axios.get(
+    `https://api.popcat.xyz/chatbot?msg=${encodeURIComponent(userMessage)}&owner=Seven&botname=${encodeURIComponent(global.botname || 'BOT')}`,
+    { timeout: 12000 }
+  )
+  let reply = res.data?.response
+  if (!reply?.trim()) throw new Error('Popcat: sem resposta')
+  return reply.trim()
+}
+
+// ─────────────────────────────────────────────────────
+// Orquestrador com fallbacks
+// ─────────────────────────────────────────────────────
+async function askAI(chatId, userMessage) {
+  if (!chatHistory.has(chatId)) chatHistory.set(chatId, [])
+  let history = chatHistory.get(chatId)
+
+  let reply = null
+  let errs = []
+
+  for (let [name, fn] of [
+    ['DuckDuckGo', () => duckAI(userMessage, history)],
+    ['Pollinations', () => pollinationsAI(userMessage)],
+    ['Popcat', () => popcatAI(userMessage)]
+  ]) {
+    try {
+      reply = await fn()
+      if (reply) { console.log(`[IA] ${name} respondeu`); break }
+    } catch (e) {
+      errs.push(`${name}: ${e.message}`)
+      console.warn(`[IA] ${name} falhou: ${e.message}`)
+    }
+  }
+
+  if (!reply) throw new Error(errs.join(' | '))
+
+  // Atualizar histórico
+  history.push({ role: 'user', content: userMessage })
   history.push({ role: 'assistant', content: reply })
+  if (history.length > MAX_HISTORY * 2) history.splice(0, 2)
   chatHistory.set(chatId, history)
 
-  return reply.trim()
+  return reply
 }
 
 // ─────────────────────────────────────────────────────
@@ -94,55 +129,43 @@ let handler = async (m, { conn, text, command }) => {
   let rawText = (m.text || '').trim()
   let prefix = global.prefix || /^[./!#]/
 
-  // ── Comando de toggle: .ia on/off ──
+  // ── Comandos de controle ──
   if (['ia', 'gpt', 'chatgpt', 'aion', 'aioff'].includes(command)) {
     let action = (text || command).toLowerCase()
 
     if (action === 'off' || command === 'aioff') {
-      if (aiChats.has(m.chat)) {
-        aiChats.delete(m.chat)
-        chatHistory.delete(m.chat)
-        return m.reply(`🔴 *IA desativada neste chat!*\n\nPara ativar novamente, use *.ia on*`)
-      }
-      return m.reply(`ℹ️ A IA já estava desativada neste chat.`)
+      aiChats.delete(m.chat)
+      chatHistory.delete(m.chat)
+      return m.reply(`🔴 *IA desativada!*\nPara reativar: *.ia on*`)
     }
-
     if (action === 'on' || command === 'aion') {
       aiChats.set(m.chat, true)
-      chatHistory.delete(m.chat) // limpa histórico anterior
+      chatHistory.delete(m.chat)
       return m.reply(
         `🟢 *IA ativada neste chat!*\n\n` +
-        `🤖 Agora responderei *todas as mensagens* automaticamente!\n\n` +
-        `📌 Para desativar: *.ia off*\n` +
-        `🗑️ Para limpar o histórico: *.ia reset*`
+        `🤖 Responderei *todas as mensagens* automaticamente.\n\n` +
+        `*.ia off* → Desativar\n*.ia reset* → Limpar histórico`
       )
     }
-
     if (action === 'reset' || action === 'limpar') {
       chatHistory.delete(m.chat)
-      return m.reply(`♻️ *Histórico de conversa limpo!*\nA IA começa uma nova conversa agora.`)
+      return m.reply(`♻️ *Histórico limpo!* Nova conversa iniciada.`)
     }
 
-    // Status atual
-    let status = aiChats.has(m.chat) ? '🟢 Ativada' : '🔴 Desativada'
+    let status = aiChats.has(m.chat) ? '🟢 Ativa' : '🔴 Inativa'
     return m.reply(
-      `🤖 *Status da IA neste chat:* ${status}\n\n` +
-      `*.ia on* - Ativar IA automática\n` +
-      `*.ia off* - Desativar IA\n` +
-      `*.ia reset* - Limpar histórico`
+      `🤖 *IA neste chat: ${status}*\n\n` +
+      `*.ia on* → Ativar\n*.ia off* → Desativar\n*.ia reset* → Limpar histórico`
     )
   }
 
-  // ── Bloco all: responde mensagens quando IA está ativa ──
-  if (!aiChats.has(m.chat)) return             // IA não está ativa neste chat
-  if (!rawText) return                          // sem texto
-  if (rawText.length < 2) return               // ignora mensagens muito curtas (stickers, etc)
-  if (prefix.test(rawText)) return             // ignora comandos com prefixo
-  if (m.isBaileys) return                      // ignora mensagens do próprio bot
+  // ── Resposta automática (handler.all) ──
+  if (!aiChats.has(m.chat)) return
+  if (!rawText || rawText.length < 2) return
+  if (prefix.test(rawText)) return
+  if (m.isBaileys) return
 
-  // Indicador de digitando (reação)
   await m.react('🤔')
-
   try {
     let reply = await askAI(m.chat, rawText)
     await conn.sendMessage(m.chat, { text: reply }, { quoted: m })
@@ -150,13 +173,13 @@ let handler = async (m, { conn, text, command }) => {
   } catch (err) {
     console.error('[IA ERRO]:', err.message)
     await m.react('❌')
-    await m.reply('❌ A IA não conseguiu responder agora. Tente novamente em instantes.')
+    await m.reply('❌ Todas as IAs falharam. Tente novamente em instantes.')
   }
 }
 
 handler.help = ['ia on/off', 'ia reset']
 handler.tags = ['tools']
 handler.command = ['ia', 'gpt', 'chatgpt', 'aion', 'aioff']
-handler.all = true // necessário para capturar mensagens sem prefixo quando ativado
+handler.all = true
 
 export default handler
