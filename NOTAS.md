@@ -7,6 +7,7 @@
 
 ## 📌 1. Visão Geral do Projeto
 * **Nome:** BOT SEVEN
+* **Repositório GitHub:** `https://github.com/SEVEN-S2/Bot-Seven.git`
 * **Ambiente:** Node.js (ES Modules - `"type": "module"`)
 * **Biblioteca Principal do WhatsApp:** `@whiskeysockets/baileys` (versão 6.x)
 * **Método de Autenticação:** **QR Code** no terminal (pasta de sessão: `auth_info_baileys/`).
@@ -84,7 +85,33 @@ export default handler
 
 ---
 
-## 📜 5. Histórico de Alterações
+## ☁️ 5. Como Vincular e Rodar na VPS (Linux / Ubuntu)
+
+Para clonar e manter o bot rodando na sua VPS:
+
+1. **Clonar o Repositório:**
+   ```bash
+   git clone https://github.com/SEVEN-S2/Bot-Seven.git
+   cd Bot-Seven
+   ```
+2. **Instalar Dependências:**
+   ```bash
+   npm install
+   ```
+3. **Executar via PM2 (Process Manager para manter ativo 24/7):**
+   ```bash
+   npm install -g pm2
+   pm2 start main.js --name "bot-seven"
+   pm2 logs "bot-seven" # Para visualizar o QR Code e escanear
+   ```
+4. **Atualizar alterações futuras da VPS:**
+   ```bash
+   git pull origin main
+   ```
+
+---
+
+## 📜 6. Histórico de Alterações
 
 - **2026-09-21:**
   - Inicialização do projeto base com Baileys e suporte a ES Modules.
@@ -94,3 +121,4 @@ export default handler
   - Configuração do modo de conexão via **QR Code** no terminal (`qrcode-terminal`).
   - Atualização do `handler.js` para que todos os usuários e o próprio número do bot (`fromMe`) possam disparar comandos.
   - Criação e atualização contínua do `NOTAS.md`.
+  - Publicação e sincronização inicial com o repositório remoto GitHub (`https://github.com/SEVEN-S2/Bot-Seven.git`).
