@@ -25,18 +25,30 @@ async function geminiAI(userMessage, history) {
   }
   contents.push({ role: 'user', parts: [{ text: userMessage }] })
 
-  let url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
-  let res = await axios.post(
-    url,
-    {
-      contents,
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
-    },
-    { timeout: 15000 }
-  )
+  let models = ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
+  let text = null
+  let lastErr = null
 
-  let text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error('Gemini: resposta vazia')
+  for (let m of models) {
+    try {
+      let url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`
+      let res = await axios.post(
+        url,
+        {
+          contents,
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
+        },
+        { timeout: 15000 }
+      )
+
+      text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (text?.trim()) break
+    } catch (e) {
+      lastErr = e.response?.data?.error?.message || e.message
+    }
+  }
+
+  if (!text || !text.trim()) throw new Error(`Gemini: ${lastErr || 'resposta vazia'}`)
   return text.trim()
 }
 
