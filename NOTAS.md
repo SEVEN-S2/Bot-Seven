@@ -21,6 +21,8 @@
 BOT SEVEN/
 ├── auth_info_baileys/       # Credenciais Multi-Device do Baileys (IGNORADO NO GIT)
 ├── tmp/                     # Arquivos temporários de conversão multimídia (FFmpeg)
+├── scripts/
+│   └── auto-pull.js         # Daemon de Auto-Update contínuo (monitora git a cada 15s)
 ├── lib/
 │   ├── simple.js            # Extensões do Socket Baileys e serialização de mensagens (smsg e downloadMedia)
 │   ├── sticker.js           # Criação de WebP com wa-sticker-formatter + metadados EXIF (node-webpmux)
@@ -37,7 +39,24 @@ BOT SEVEN/
 
 ---
 
-## ⚙️ 3. Convenções de Desenvolvimento de Plugins
+## 🔄 3. Sistema de Auto-Update Instantâneo na VPS
+
+O projeto possui um **Auto-Updater** (`scripts/auto-pull.js`) que monitora o repositório GitHub em segundo plano a cada 15 segundos.
+
+### Como funciona:
+1. Quando você faz um `git push` no seu computador, o daemon detecta o novo commit automaticamente na VPS.
+2. Ele executa `git pull origin main` sem derrubar o bot.
+3. Como o `main.js` possui **Hot-Reload**, qualquer plugin novo ou alterado em `plugins/` é recarregado **instantaneamente** em memória sem desconectar a sessão do WhatsApp!
+
+### Como ativar na VPS com PM2:
+```bash
+pm2 start scripts/auto-pull.js --name "bot-updater"
+pm2 save
+```
+
+---
+
+## ⚙️ 4. Convenções de Desenvolvimento de Plugins
 
 Todos os novos comandos devem ser criados dentro da pasta `plugins/` seguindo a estrutura padrão:
 
@@ -60,65 +79,15 @@ handler.private = false  // Exige ser executado apenas no privado?
 export default handler
 ```
 
-### ⚡ Hot-Reload Ativo:
-- Não é necessário reiniciar o bot após criar ou editar arquivos em `plugins/`. O `main.js` monitora e recarrega os plugins instantaneamente usando validação de sintaxe (`syntax-error`).
-
 ---
 
-## 🛠️ 4. Recursos Disponíveis nos Módulos
-
-### `m` (Mensagem Serializada via `lib/simple.js`):
-- `m.text`: Texto da mensagem ou legenda.
-- `m.chat`: JID do chat atual (privado ou grupo).
-- `m.sender`: JID de quem enviou.
-- `m.isGroup`: Boolean indicando se a mensagem veio de um grupo.
-- `m.quoted`: Objeto da mensagem citada/respondida (se houver).
-- `m.quoted.download()`: Baixa a mídia citada diretamente para um `Buffer`.
-- `m.download()`: Baixa a mídia da mensagem atual diretamente para um `Buffer`.
-- `m.reply(texto)`: Envia resposta citando a mensagem original.
-- `m.react(emoji)`: Reage à mensagem com um emoji.
-
-### `conn` (Socket do Baileys):
-- `conn.sendSticker(jid, stickerBuffer, quoted)`: Envia figurinha WebP.
-- `conn.sendImageAsSticker(jid, mediaBuffer, isVideo, quoted, packname, author)`: Converte mídia e envia como figurinha.
-- `conn.decodeJid(jid)`: Decodifica JID com formato limpo.
-
----
-
-## ☁️ 5. Como Vincular e Rodar na VPS (Linux / Ubuntu)
-
-Para clonar e manter o bot rodando na sua VPS:
-
-1. **Clonar o Repositório:**
-   ```bash
-   git clone https://github.com/SEVEN-S2/Bot-Seven.git
-   cd Bot-Seven
-   ```
-2. **Instalar Dependências:**
-   ```bash
-   npm install
-   ```
-3. **Executar via PM2 (Process Manager para manter ativo 24/7):**
-   ```bash
-   npm install -g pm2
-   pm2 start main.js --name "bot-seven"
-   pm2 logs "bot-seven" # Para visualizar o QR Code e escanear
-   ```
-4. **Atualizar alterações futuras da VPS:**
-   ```bash
-   git pull origin main
-   ```
-
----
-
-## 📜 6. Histórico de Alterações
+## 📜 5. Histórico de Alterações
 
 - **2026-09-21:**
-  - Inicialização do projeto base com Baileys e suporte a ES Modules.
-  - Implementação de `lib/converter.js` integrado com `ffmpeg-static` (não requer instalação manual de FFmpeg no sistema operacional).
-  - Implementação de `lib/sticker.js` com `wa-sticker-formatter` e metadados EXIF (`node-webpmux`).
-  - Criação do plugin `plugins/sticker-s.js` para fotos, vídeos (< 10s) e re-etiquetagem de figurinhas existentes.
-  - Configuração do modo de conexão via **QR Code** no terminal (`qrcode-terminal`).
-  - Atualização do `handler.js` para que todos os usuários e o próprio número do bot (`fromMe`) possam disparar comandos.
-  - Criação e atualização contínua do `NOTAS.md`.
-  - Publicação e sincronização inicial com o repositório remoto GitHub (`https://github.com/SEVEN-S2/Bot-Seven.git`).
+  - Criação da arquitetura base em Node.js ESM e Baileys v6.
+  - Conversão de Stickers com suporte EXIF e `ffmpeg-static`.
+  - Comando `.s` com suporte a fotos, vídeos curtos e re-etiquetagem de stickers.
+  - Conexão configurada por QR Code no terminal.
+  - Permissão universal liberada para todos os usuários e número próprio (`fromMe`).
+  - Criação do sistema de **Auto-Update contínuo** (`scripts/auto-pull.js`).
+  - Repositório sincronizado em `https://github.com/SEVEN-S2/Bot-Seven.git`.
