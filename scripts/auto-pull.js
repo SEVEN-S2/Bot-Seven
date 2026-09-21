@@ -32,9 +32,10 @@ async function checkAndUpdate() {
     const changedFiles = await run(`git diff --name-only HEAD origin/main`)
     console.log(chalk.gray(`📄 Arquivos alterados:\n${changedFiles}`))
 
-    // 3. Aplicar o pull
-    await run('git pull origin main')
-    console.log(chalk.green('✔ git pull aplicado com sucesso!'))
+    // 3. Forçar sync com o remoto (sem conflitos de merge)
+    //    Descarta alterações locais que conflitem (ex: package-lock.json gerado pelo npm)
+    await run('git reset --hard origin/main')
+    console.log(chalk.green('✔ Sincronizado com GitHub (reset --hard)'))
 
     // 4. Se package.json mudou, rodar npm install
     if (changedFiles.includes('package.json')) {
