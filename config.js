@@ -12,5 +12,5 @@ global.owner = [
   ['5511999999999', 'Owner', true]
 ]
 
-// Modo de autenticação: false = QR Code no terminal | true = Pairing Code
-global.usePairingCode = false
+// Chave da API Gemini (Google AI Studio - 100% Grátis)
+global.geminiKey = process.env.GEMINI_KEY || ''
