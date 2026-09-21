@@ -81,7 +81,28 @@ export default handler
 
 ---
 
-## 📜 5. Histórico de Alterações
+## 📁 5. Lista Completa de Plugins
+
+| Arquivo | Comandos | Categoria | Descrição |
+|:---|:---|:---|:---|
+| `sticker-s.js` | `.s`, `.sticker`, `.fig` | sticker | Foto/vídeo para figurinha + re-etiquetar |
+| `sticker-toimg.js` | `.toimg`, `.tofoto` | sticker | Figurinha de volta para imagem/foto |
+| `sticker-attp.js` | `.ttp`, `.attp` | sticker | Texto em figurinha estática/animada |
+| `dl-play.js` | `.play`, `.mp3` | downloader | Busca e baixa músicas do YouTube |
+| `dl-tiktok.js` | `.tiktok`, `.tt` | downloader | Download de vídeos TikTok sem marca d'água |
+| `dl-instagram.js` | `.ig`, `.reels` | downloader | Download de posts/reels do Instagram |
+| `dl-mediafire.js` | `.mediafire`, `.mf` | downloader | Extrai link direto de arquivos MediaFire |
+| `group-hidetag.js` | `.hidetag`, `.todos` | group | Marca todos os membros invisivelmente |
+| `group-kick.js` | `.kick`, `.expulsar` | group | Expulsa membros do grupo (requer admin) |
+| `group-welcome.js` | `.welcome`, `.antilink` | group | Boas-vindas e bloqueio de links de grupo |
+| `tools-tts.js` | `.tts`, `.falar` | tools | Texto para áudio narrado (Google TTS) |
+| `tools-translate.js` | `.traduzir`, `.trad` | tools | Tradução automática multi-idioma |
+| `tools-ssweb.js` | `.ssweb`, `.screenshot` | tools | Captura de tela de sites |
+| `main-menu.js` | `.menu`, `.help` | info | Menu dinâmico de todos os comandos |
+
+---
+
+## 📜 6. Histórico de Alterações
 
 - **2026-09-21:**
   - Criação da arquitetura base em Node.js ESM e Baileys v6.
@@ -90,4 +111,5 @@ export default handler
   - Conexão configurada por QR Code no terminal.
   - Permissão universal liberada para todos os usuários e número próprio (`fromMe`).
   - Criação do sistema de **Auto-Update contínuo** (`scripts/auto-pull.js`).
+  - Adição de 13 novos plugins: figurinhas avançadas, downloaders, admin de grupos e ferramentas.
   - Repositório sincronizado em `https://github.com/SEVEN-S2/Bot-Seven.git`.
