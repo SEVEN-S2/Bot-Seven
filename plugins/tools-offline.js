@@ -40,24 +40,39 @@ global.modoAusenteVoz = global.modoAusenteVoz || false
 global.modoAusenteIA = global.modoAusenteIA || false
 loadState()
 
-// Mensagem de resposta automática padrão (Texto)
-const MENSAGEM_AUSENTE = `╭━━━〔 🔴 *AVISO IMPORTANTE* 〕━━━⬣
-┃
-┃ ❌ *ESTE USUÁRIO ENCONTRA-SE*
-┃ ❌ *INDISPONÍVEL NO MOMENTO.*
-┃
-┃ 🕐 *VOLTE MAIS TARDE!*
-┃
-┃ 🤖 Mensagem automática do BOT SEVEN
-╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`
+// Mensagem de resposta automática padrão por texto (sem emojis)
+const MENSAGEM_AUSENTE = `*AVISO DE AUSÊNCIA*
+
+O usuário encontra-se indisponível no momento.
+Por favor, deixe sua mensagem que ela será visualizada assim que possível.`
+
+// Mensagem em fala natural para sintetizador de voz (sem emojis ou caracteres especiais)
+const MENSAGEM_VOZ_AUSENTE = "Olá. O usuário encontra-se indisponível no momento. Por favor, deixe sua mensagem que ela será visualizada e respondida assim que possível. Obrigado."
+
+/**
+ * Limpa texto para leitura natural pelo sintetizador de voz (remove emojis e simbolos)
+ */
+function cleanTextForSpeech(text) {
+  if (!text || text.trim() === MENSAGEM_AUSENTE.trim()) {
+    return MENSAGEM_VOZ_AUSENTE
+  }
+  return text
+    // Remove emojis e caracteres unicode gráficos
+    .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+    // Remove marcações de texto e bordas decorativas
+    .replace(/[*_~`╭┃╰━〔〕⬣•│─┌┐└┘├┤┼┴┬]/g, ' ')
+    // Normaliza múltiplos espaços
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 /**
  * Converte texto em áudio formatado para WhatsApp (Opus OGG para PTT)
  */
 async function getTTSAudio(text, lang = 'pt') {
-  let spokenText = text.replace(/[*_~`╭┃╰━〔〕⬣]/g, '').trim()
-  if (spokenText.length > 200) {
-    spokenText = spokenText.slice(0, 197) + '...'
+  let spokenText = cleanTextForSpeech(text) || MENSAGEM_VOZ_AUSENTE
+  if (spokenText.length > 250) {
+    spokenText = spokenText.slice(0, 247) + '...'
   }
   let url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${lang}&client=tw-ob`
   let res = await axios.get(url, {
@@ -87,7 +102,7 @@ async function getOfflineIAReply(chatId, userText) {
     // Sem chave Gemini: retorna null instantaneamente (0ms) para não atrasar a resposta
     return null
   }
-  let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma muito curta (máximo 2 frases) com educação, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
+  let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma muito curta (máximo 2 frases), educada e profissional SEM utilizar emojis, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
   try {
     let timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('IA Timeout')), 2500))
     let reply = await Promise.race([askAI(chatId, prompt), timeoutPromise])
@@ -100,7 +115,7 @@ async function getOfflineIAReply(chatId, userText) {
 
 let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   if (!isOwner) {
-    return m.reply('⛔ Este comando é restrito apenas ao dono do Bot!')
+    return m.reply('Este comando é restrito apenas ao dono do Bot.')
   }
 
   let sub = (args[0] || '').toLowerCase()
@@ -108,13 +123,13 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   if (sub === 'on' || sub === 'ativar') {
     global.modoAusente = true
     saveState()
-    return m.reply(`✅ *MODO AUSENTE ATIVADO!*`)
+    return m.reply(`*MODO AUSENTE ATIVADO*`)
   }
 
   if (sub === 'off' || sub === 'desativar') {
     global.modoAusente = false
     saveState()
-    return m.reply(`🔴 *MODO AUSENTE DESATIVADO!*`)
+    return m.reply(`*MODO AUSENTE DESATIVADO*`)
   }
 
   if (sub === 'voz' || sub === 'audio') {
@@ -122,9 +137,9 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
     if (global.modoAusenteVoz) global.modoAusente = true
     saveState()
     return m.reply(
-      `🗣️ *RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n` +
-      `📌 *Modo Ausente:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n\n` +
-      `${global.modoAusenteVoz ? '🎙️ Respostas serão enviadas em formato de ÁUDIO.' : '💬 Respostas serão enviadas em TEXTO.'}`
+      `*RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? 'ATIVADA' : 'DESATIVADA'}\n` +
+      `*Modo Ausente:* ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
+      `${global.modoAusenteVoz ? 'As respostas serão enviadas em formato de áudio de voz.' : 'As respostas serão enviadas em formato de texto.'}`
     )
   }
 
@@ -133,24 +148,22 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
     if (global.modoAusenteIA) global.modoAusente = true
     saveState()
     return m.reply(
-      `🧠 *RESPOSTA INTELIGENTE COM IA*: ${global.modoAusenteIA ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n` +
-      `📌 *Modo Ausente:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n\n` +
-      `${global.modoAusenteIA ? '🤖 A IA responderá às dúvidas avisando que você está ausente.' : '📜 Será enviada a mensagem padrão.'}`
+      `*RESPOSTA INTELIGENTE COM IA*: ${global.modoAusenteIA ? 'ATIVADA' : 'DESATIVADA'}\n` +
+      `*Modo Ausente:* ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
+      `${global.modoAusenteIA ? 'A IA responderá às dúvidas avisando que você está ausente.' : 'Será enviada a mensagem padrão.'}`
     )
   }
 
   if (sub === 'status' || sub === 'info') {
     return m.reply(
-      `╭━━━〔 🔴 *PAINEL MODO AUSENTE* 〕━━━⬣\n` +
-      `┃ 📌 *Estado Geral:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n` +
-      `┃ 🗣️ *Modo Voz (TTS):* ${global.modoAusenteVoz ? '✅ ATIVADO' : '❌ DESATIVADO'}\n` +
-      `┃ 🧠 *Modo IA (Gemini):* ${global.modoAusenteIA ? '✅ ATIVADO' : '❌ DESATIVADO'}\n` +
-      `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣\n\n` +
-      `💡 *Comandos:* \n` +
-      `• *${usedPrefix}${command} on* → Ativar\n` +
-      `• *${usedPrefix}${command} off* → Desativar\n` +
-      `• *${usedPrefix}${command} voz* → Alternar modo Voz (Áudio)\n` +
-      `• *${usedPrefix}${command} ia* → Alternar modo IA (Gemini)`
+      `*PAINEL MODO AUSENTE*\n` +
+      `• Estado Geral: ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n` +
+      `• Modo Voz (TTS): ${global.modoAusenteVoz ? 'ATIVADO' : 'DESATIVADO'}\n` +
+      `• Modo IA (Gemini): ${global.modoAusenteIA ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
+      `Comandos:\n` +
+      `• *${usedPrefix}${command} on / off* -> Ativar ou Desativar\n` +
+      `• *${usedPrefix}${command} voz* -> Alternar modo Voz (Áudio)\n` +
+      `• *${usedPrefix}${command} ia* -> Alternar modo IA (Gemini)`
     )
   }
 
@@ -160,24 +173,16 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
 
   if (global.modoAusente) {
     await m.reply(
-      `╭━━━〔 ✅ *MODO AUSENTE ATIVADO* 〕━━━⬣\n` +
-      `┃\n` +
-      `┃ 🔴 Responderei automaticamente a qualquer\n` +
-      `┃ 🔴 mensagem privada recebida.\n` +
-      `┃\n` +
-      `┃ 🗣️ *Áudio (TTS):* ${global.modoAusenteVoz ? '✅ ON' : '❌ OFF'}\n` +
-      `┃ 🧠 *IA (Gemini):* ${global.modoAusenteIA ? '✅ ON' : '❌ OFF'}\n` +
-      `┃\n` +
-      `┃ 📌 Desativar: *${usedPrefix}${command} off*\n` +
-      `┃ 💡 Opções: *${usedPrefix}${command} voz* | *${usedPrefix}${command} ia*\n` +
-      `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`
+      `*MODO AUSENTE ATIVADO*\n\n` +
+      `Responderei automaticamente a qualquer mensagem privada recebida.\n\n` +
+      `• Áudio (TTS): ${global.modoAusenteVoz ? 'ON' : 'OFF'}\n` +
+      `• IA (Gemini): ${global.modoAusenteIA ? 'ON' : 'OFF'}\n\n` +
+      `Para desativar: *${usedPrefix}${command} off*`
     )
   } else {
     await m.reply(
-      `╭━━━〔 🟢 *MODO AUSENTE DESATIVADO* 〕━━━⬣\n` +
-      `┃\n` +
-      `┃ 🟢 Respostas automáticas desligadas.\n` +
-      `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`
+      `*MODO AUSENTE DESATIVADO*\n\n` +
+      `Respostas automáticas desligadas.`
     )
   }
 }
