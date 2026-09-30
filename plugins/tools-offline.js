@@ -78,27 +78,43 @@ async function getTTSAudio(text, voiceName = null) {
     spokenText = spokenText.slice(0, 297) + '...'
   }
 
-  // Vozes femininas disponíveis: Vitoria (Polly BR), Camila (Polly BR Jovem), Ines (Polly PT Sotaque Português)
-  let voice = voiceName || global.modoAusenteVozTipo || 'Vitoria'
+  let voiceType = voiceName || global.modoAusenteVozTipo || 'Vitoria'
   let mp3Buf = null
 
-  // Tenta Amazon Polly via StreamElements (Voz ultra-natural e feminina com sotaque)
+  // 1. Tentar TikTok TTS (Voz ultra-realista de inteligência artificial feminina)
   try {
-    let urlSe = `https://api.streamelements.com/kappa/v2/speech?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(spokenText)}`
-    let resSe = await axios.get(urlSe, {
-      responseType: 'arraybuffer',
-      timeout: 8000
-    })
-    if (resSe.data && resSe.data.length > 500) {
-      mp3Buf = Buffer.from(resSe.data)
+    let ttVoice = (voiceType === 'Ines' || voiceType === 'ines') ? 'pt_001' : 'br_001'
+    let resTt = await axios.post('https://tiktok-tts-api.vercel.app/api/tts', {
+      text: spokenText,
+      voice: ttVoice
+    }, { timeout: 5000 })
+    if (resTt.data?.audio) {
+      mp3Buf = Buffer.from(resTt.data.audio, 'base64')
     }
-  } catch (errSe) {
-    console.warn('[MODO AUSENTE] StreamElements Polly falhou, caindo para Google TTS:', errSe.message)
+  } catch (_) {}
+
+  // 2. Tentar StreamElements (Amazon Polly - Vitoria/Camila/Ines) com User-Agent
+  if (!mp3Buf) {
+    try {
+      let seVoice = (voiceType === 'ines' || voiceType === 'Ines') ? 'Ines' : ((voiceType === 'camila' || voiceType === 'Camila') ? 'Camila' : 'Vitoria')
+      let urlSe = `https://api.streamelements.com/kappa/v2/speech?voice=${seVoice}&text=${encodeURIComponent(spokenText)}`
+      let resSe = await axios.get(urlSe, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        responseType: 'arraybuffer',
+        timeout: 5000
+      })
+      if (resSe.data && resSe.data.length > 500) {
+        mp3Buf = Buffer.from(resSe.data)
+      }
+    } catch (_) {}
   }
 
-  // Fallback: Google Translate TTS se o StreamElements falhar
+  // 3. Fallback: Google Translate TTS com sotaque específico (pt-PT para Portugal, pt-BR para Brasil)
   if (!mp3Buf) {
-    let urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=pt&client=tw-ob`
+    let lang = (voiceType === 'ines' || voiceType === 'Ines') ? 'pt-PT' : 'pt-BR'
+    let urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${lang}&client=tw-ob`
     let resG = await axios.get(urlGoogle, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
