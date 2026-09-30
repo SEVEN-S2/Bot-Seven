@@ -3,6 +3,13 @@ import { smsg } from './lib/simple.js'
 import chalk from 'chalk'
 import { isAntilinkActive } from './plugins/group-welcome.js'
 
+// Importa a mensagem do modo ausente (lazy: pode ser undefined antes de carregar)
+let MENSAGEM_AUSENTE
+try {
+  const offlineModule = await import('./plugins/tools-offline.js')
+  MENSAGEM_AUSENTE = offlineModule.MENSAGEM_AUSENTE
+} catch (_) {}
+
 /**
  * Roteia e executa os comandos dos plugins
  * @param {object} conn 
@@ -55,6 +62,20 @@ export async function handler(conn, rawMsg) {
         return
       }
     }
+
+    // ─── MODO AUSENTE ────────────────────────────────────────────────────────
+    // Se ativado, responde automaticamente no privado a quem não for o dono
+    if (global.modoAusente && !m.isGroup && !m.fromMe) {
+      const senderNum = (m.sender || '').replace(/[^0-9]/g, '')
+      const isOwnerSender = (global.owner || []).some(([n]) => n === senderNum)
+      if (!isOwnerSender) {
+        const msgAusente = MENSAGEM_AUSENTE ||
+          '❌ *ESTE USUÁRIO ENCONTRA-SE INDISPONÍVEL NO MOMENTO. VOLTE MAIS TARDE!*\n\n🤖 _Mensagem automática - BOT SEVEN_'
+        await conn.sendMessage(m.chat, { text: msgAusente })
+        return // Não processa nenhum outro comando
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // Log formatado no terminal
     if (m.text && isPrefix) {
