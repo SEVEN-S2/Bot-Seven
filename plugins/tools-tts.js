@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { toPTT } from '../lib/converter.js'
 
 let handler = async (m, { conn, text, args, usedPrefix, command }) => {
   let lang = 'pt'
@@ -20,12 +21,30 @@ let handler = async (m, { conn, text, args, usedPrefix, command }) => {
   await m.react('⏳')
   try {
     let url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${lang}&client=tw-ob`
-    let res = await axios.get(url, { responseType: 'arraybuffer' })
+    let res = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      responseType: 'arraybuffer'
+    })
+
+    let rawBuffer = Buffer.from(res.data)
+    let pttBuffer = rawBuffer
+    let mimetype = 'audio/mpeg'
+    let ptt = false
+
+    try {
+      pttBuffer = await toPTT(rawBuffer, 'mp3')
+      mimetype = 'audio/ogg; codecs=opus'
+      ptt = true
+    } catch (e) {
+      console.warn('[TTS] Conversão Opus falhou, enviando mp3 padrão:', e.message)
+    }
 
     await conn.sendMessage(m.chat, {
-      audio: res.data,
-      mimetype: 'audio/mp4',
-      ptt: true
+      audio: pttBuffer,
+      mimetype,
+      ptt
     }, { quoted: m })
 
     await m.react('✅')

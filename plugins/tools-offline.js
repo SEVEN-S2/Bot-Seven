@@ -21,8 +21,10 @@ const MENSAGEM_AUSENTE = `╭━━━〔 🔴 *AVISO IMPORTANTE* 〕━━━�
 ┃ 🤖 Mensagem automática do BOT SEVEN
 ╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`
 
+import { toPTT } from '../lib/converter.js'
+
 /**
- * Converte texto em áudio MP3 utilizando Google Text-to-Speech (TTS)
+ * Converte texto em áudio formatado para WhatsApp (Opus OGG para PTT)
  */
 async function getTTSAudio(text, lang = 'pt') {
   let spokenText = text.replace(/[*_~`╭┃╰━〔〕⬣]/g, '').trim()
@@ -37,7 +39,15 @@ async function getTTSAudio(text, lang = 'pt') {
     responseType: 'arraybuffer',
     timeout: 10000
   })
-  return Buffer.from(res.data)
+
+  let mp3Buf = Buffer.from(res.data)
+  try {
+    let opusBuf = await toPTT(mp3Buf, 'mp3')
+    return { audio: opusBuf, mimetype: 'audio/ogg; codecs=opus', ptt: true }
+  } catch (err) {
+    console.warn('[MODO AUSENTE] FFMpeg Opus falhou, fallback para mp3:', err.message)
+    return { audio: mp3Buf, mimetype: 'audio/mpeg', ptt: false }
+  }
 }
 
 /**

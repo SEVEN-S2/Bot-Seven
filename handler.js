@@ -90,8 +90,8 @@ export async function handler(conn, rawMsg) {
         // Opção 10: Resposta em Áudio (TTS)
         if (global.modoAusenteVoz && offlineModule.getTTSAudio) {
           try {
-            let audioBuf = await offlineModule.getTTSAudio(replyText)
-            await conn.sendMessage(m.chat, { audio: audioBuf, mimetype: 'audio/mp4', ptt: true }, { quoted: m })
+            let audioPayload = await offlineModule.getTTSAudio(replyText)
+            await conn.sendMessage(m.chat, audioPayload, { quoted: m })
             console.log(chalk.green(`[MODO AUSENTE] Áudio enviado para ${m.sender}`))
             return
           } catch (ttsErr) {
