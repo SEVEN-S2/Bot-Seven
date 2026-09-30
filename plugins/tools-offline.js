@@ -36,7 +36,7 @@ let handler = async (m, { conn, isOwner }) => {
 ┃
 ┃ 🔴 Responderei automaticamente
 ┃ 🔴 a qualquer mensagem privada
-┃ 🔴 enquanto você estiver offline.
+┃ 🔴 (mesmo estando online ou offline).
 ┃
 ┃ 📌 Para desativar: *.ausente*
 ╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`)
