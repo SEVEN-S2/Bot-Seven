@@ -20,6 +20,7 @@ function loadState() {
       global.modoAusente = !!data.modoAusente
       global.modoAusenteVoz = !!data.modoAusenteVoz
       global.modoAusenteIA = !!data.modoAusenteIA
+      global.modoAusenteVozTipo = data.modoAusenteVozTipo || 'Vitoria'
     }
   } catch (_) {}
 }
@@ -29,7 +30,8 @@ function saveState() {
     writeFileSync(stateFile, JSON.stringify({
       modoAusente: !!global.modoAusente,
       modoAusenteVoz: !!global.modoAusenteVoz,
-      modoAusenteIA: !!global.modoAusenteIA
+      modoAusenteIA: !!global.modoAusenteIA,
+      modoAusenteVozTipo: global.modoAusenteVozTipo || 'Vitoria'
     }, null, 2))
   } catch (_) {}
 }
@@ -38,6 +40,7 @@ function saveState() {
 global.modoAusente = global.modoAusente || false
 global.modoAusenteVoz = global.modoAusenteVoz || false
 global.modoAusenteIA = global.modoAusenteIA || false
+global.modoAusenteVozTipo = global.modoAusenteVozTipo || 'Vitoria'
 loadState()
 
 // Mensagem de resposta automática padrão por texto (sem emojis)
@@ -67,23 +70,45 @@ function cleanTextForSpeech(text) {
 }
 
 /**
- * Converte texto em áudio formatado para WhatsApp (Opus OGG para PTT)
+ * Converte texto em áudio de voz feminina natural formatado para WhatsApp PTT
  */
-async function getTTSAudio(text, lang = 'pt') {
+async function getTTSAudio(text, voiceName = null) {
   let spokenText = cleanTextForSpeech(text) || MENSAGEM_VOZ_AUSENTE
-  if (spokenText.length > 250) {
-    spokenText = spokenText.slice(0, 247) + '...'
+  if (spokenText.length > 300) {
+    spokenText = spokenText.slice(0, 297) + '...'
   }
-  let url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${lang}&client=tw-ob`
-  let res = await axios.get(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    },
-    responseType: 'arraybuffer',
-    timeout: 10000
-  })
 
-  let mp3Buf = Buffer.from(res.data)
+  // Vozes femininas disponíveis: Vitoria (Polly BR), Camila (Polly BR Jovem), Ines (Polly PT Sotaque Português)
+  let voice = voiceName || global.modoAusenteVozTipo || 'Vitoria'
+  let mp3Buf = null
+
+  // Tenta Amazon Polly via StreamElements (Voz ultra-natural e feminina com sotaque)
+  try {
+    let urlSe = `https://api.streamelements.com/kappa/v2/speech?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(spokenText)}`
+    let resSe = await axios.get(urlSe, {
+      responseType: 'arraybuffer',
+      timeout: 8000
+    })
+    if (resSe.data && resSe.data.length > 500) {
+      mp3Buf = Buffer.from(resSe.data)
+    }
+  } catch (errSe) {
+    console.warn('[MODO AUSENTE] StreamElements Polly falhou, caindo para Google TTS:', errSe.message)
+  }
+
+  // Fallback: Google Translate TTS se o StreamElements falhar
+  if (!mp3Buf) {
+    let urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=pt&client=tw-ob`
+    let resG = await axios.get(urlGoogle, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      responseType: 'arraybuffer',
+      timeout: 10000
+    })
+    mp3Buf = Buffer.from(resG.data)
+  }
+
   try {
     let opusBuf = await toPTT(mp3Buf, 'mp3')
     return { audio: opusBuf, mimetype: 'audio/ogg; codecs=opus', ptt: true }
@@ -119,6 +144,7 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   }
 
   let sub = (args[0] || '').toLowerCase()
+  let opt = (args[1] || '').toLowerCase()
 
   if (sub === 'on' || sub === 'ativar') {
     global.modoAusente = true
@@ -133,13 +159,39 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   }
 
   if (sub === 'voz' || sub === 'audio') {
+    if (opt === 'vitoria' || opt === 'vitória') {
+      global.modoAusenteVozTipo = 'Vitoria'
+      global.modoAusenteVoz = true
+      global.modoAusente = true
+      saveState()
+      return m.reply(`*VOZ DEFINIDA*: Vitória (Feminina Brasileira Suave e Natural)`)
+    }
+    if (opt === 'camila') {
+      global.modoAusenteVozTipo = 'Camila'
+      global.modoAusenteVoz = true
+      global.modoAusente = true
+      saveState()
+      return m.reply(`*VOZ DEFINIDA*: Camila (Feminina Brasileira Jovem)`)
+    }
+    if (opt === 'ines' || opt === 'inês') {
+      global.modoAusenteVozTipo = 'Ines'
+      global.modoAusenteVoz = true
+      global.modoAusente = true
+      saveState()
+      return m.reply(`*VOZ DEFINIDA*: Inês (Feminina com Sotaque de Portugal)`)
+    }
+
     global.modoAusenteVoz = !global.modoAusenteVoz
     if (global.modoAusenteVoz) global.modoAusente = true
     saveState()
     return m.reply(
       `*RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? 'ATIVADA' : 'DESATIVADA'}\n` +
+      `*Voz Atual:* ${global.modoAusenteVozTipo || 'Vitoria'} (Feminina)\n` +
       `*Modo Ausente:* ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
-      `${global.modoAusenteVoz ? 'As respostas serão enviadas em formato de áudio de voz.' : 'As respostas serão enviadas em formato de texto.'}`
+      `Opções de vozes femininas:\n` +
+      `• *${usedPrefix}${command} voz vitoria* (Feminina BR Suave)\n` +
+      `• *${usedPrefix}${command} voz camila* (Feminina BR Jovem)\n` +
+      `• *${usedPrefix}${command} voz ines* (Feminina Sotaque Portugal)`
     )
   }
 
@@ -159,11 +211,12 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
       `*PAINEL MODO AUSENTE*\n` +
       `• Estado Geral: ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n` +
       `• Modo Voz (TTS): ${global.modoAusenteVoz ? 'ATIVADO' : 'DESATIVADO'}\n` +
+      `• Voz Selecionada: ${global.modoAusenteVozTipo || 'Vitoria'} (Feminina)\n` +
       `• Modo IA (Gemini): ${global.modoAusenteIA ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
       `Comandos:\n` +
       `• *${usedPrefix}${command} on / off* -> Ativar ou Desativar\n` +
-      `• *${usedPrefix}${command} voz* -> Alternar modo Voz (Áudio)\n` +
-      `• *${usedPrefix}${command} ia* -> Alternar modo IA (Gemini)`
+      `• *${usedPrefix}${command} voz [vitoria/camila/ines]* -> Escolher Voz Feminina\n` +
+      `• *${usedPrefix}${command} ia* -> Alternar modo IA`
     )
   }
 
@@ -175,7 +228,7 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
     await m.reply(
       `*MODO AUSENTE ATIVADO*\n\n` +
       `Responderei automaticamente a qualquer mensagem privada recebida.\n\n` +
-      `• Áudio (TTS): ${global.modoAusenteVoz ? 'ON' : 'OFF'}\n` +
+      `• Áudio (TTS): ${global.modoAusenteVoz ? 'ON (' + (global.modoAusenteVozTipo || 'Vitoria') + ')' : 'OFF'}\n` +
       `• IA (Gemini): ${global.modoAusenteIA ? 'ON' : 'OFF'}\n\n` +
       `Para desativar: *${usedPrefix}${command} off*`
     )
