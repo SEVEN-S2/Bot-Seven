@@ -67,8 +67,13 @@ export async function handler(conn, rawMsg) {
     }
 
     // ─── MODO AUSENTE ────────────────────────────────────────────────────────
-    // Se ativado, responde automaticamente no privado a quem não for o dono
-    if (global.modoAusente && !m.isGroup && !isOwner) {
+    // Responde APENAS a conversas privadas reais (não grupos, não canais/newsletters, não status, não dono)
+    const isPrivateChat = !m.isGroup && 
+      !m.chat.endsWith('@newsletter') && 
+      !m.chat.endsWith('@broadcast') && 
+      !m.chat.includes('status')
+
+    if (global.modoAusente && isPrivateChat && !isOwner && !m.fromMe) {
       try {
         console.log(chalk.yellow(`[MODO AUSENTE] Respondendo a ${m.pushName || m.sender}...`))
         const offlineModule = await import('./plugins/tools-offline.js')
