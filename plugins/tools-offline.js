@@ -1,14 +1,44 @@
 import './../config.js'
 import axios from 'axios'
 import { askAI } from './tools-ia.js'
+import { toPTT } from '../lib/converter.js'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
 
 // ============================================
-// 🔴 MODO AUSENTE COMPLETO - BOT SEVEN
+// 🔴 MODO AUSENTE PERSISTENTE - BOT SEVEN
 // ============================================
 
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const stateFile = join(__dirname, '../tmp/modo_ausente.json')
+
+function loadState() {
+  try {
+    if (existsSync(stateFile)) {
+      const data = JSON.parse(readFileSync(stateFile, 'utf-8'))
+      global.modoAusente = !!data.modoAusente
+      global.modoAusenteVoz = !!data.modoAusenteVoz
+      global.modoAusenteIA = !!data.modoAusenteIA
+    }
+  } catch (_) {}
+}
+
+function saveState() {
+  try {
+    writeFileSync(stateFile, JSON.stringify({
+      modoAusente: !!global.modoAusente,
+      modoAusenteVoz: !!global.modoAusenteVoz,
+      modoAusenteIA: !!global.modoAusenteIA
+    }, null, 2))
+  } catch (_) {}
+}
+
+// Inicializa variáveis do estado salvo em disco
 global.modoAusente = global.modoAusente || false
 global.modoAusenteVoz = global.modoAusenteVoz || false
 global.modoAusenteIA = global.modoAusenteIA || false
+loadState()
 
 // Mensagem de resposta automática padrão (Texto)
 const MENSAGEM_AUSENTE = `╭━━━〔 🔴 *AVISO IMPORTANTE* 〕━━━⬣
@@ -20,8 +50,6 @@ const MENSAGEM_AUSENTE = `╭━━━〔 🔴 *AVISO IMPORTANTE* 〕━━━�
 ┃
 ┃ 🤖 Mensagem automática do BOT SEVEN
 ╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`
-
-import { toPTT } from '../lib/converter.js'
 
 /**
  * Converte texto em áudio formatado para WhatsApp (Opus OGG para PTT)
@@ -61,7 +89,6 @@ async function getOfflineIAReply(chatId, userText) {
   }
   let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma muito curta (máximo 2 frases) com educação, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
   try {
-    // Timeout ultra-rápido de 2.5 segundos para resposta instantânea
     let timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('IA Timeout')), 2500))
     let reply = await Promise.race([askAI(chatId, prompt), timeoutPromise])
     return reply
@@ -80,17 +107,20 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
 
   if (sub === 'on' || sub === 'ativar') {
     global.modoAusente = true
+    saveState()
     return m.reply(`✅ *MODO AUSENTE ATIVADO!*`)
   }
 
   if (sub === 'off' || sub === 'desativar') {
     global.modoAusente = false
+    saveState()
     return m.reply(`🔴 *MODO AUSENTE DESATIVADO!*`)
   }
 
   if (sub === 'voz' || sub === 'audio') {
     global.modoAusenteVoz = !global.modoAusenteVoz
     if (global.modoAusenteVoz) global.modoAusente = true
+    saveState()
     return m.reply(
       `🗣️ *RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n` +
       `📌 *Modo Ausente:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n\n` +
@@ -101,6 +131,7 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   if (sub === 'ia' || sub === 'gemini' || sub === 'ai') {
     global.modoAusenteIA = !global.modoAusenteIA
     if (global.modoAusenteIA) global.modoAusente = true
+    saveState()
     return m.reply(
       `🧠 *RESPOSTA INTELIGENTE COM IA*: ${global.modoAusenteIA ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n` +
       `📌 *Modo Ausente:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n\n` +
@@ -116,14 +147,16 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
       `┃ 🧠 *Modo IA (Gemini):* ${global.modoAusenteIA ? '✅ ATIVADO' : '❌ DESATIVADO'}\n` +
       `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣\n\n` +
       `💡 *Comandos:* \n` +
-      `• *${usedPrefix}${command} on / off* → Ativar ou Desativar\n` +
+      `• *${usedPrefix}${command} on* → Ativar\n` +
+      `• *${usedPrefix}${command} off* → Desativar\n` +
       `• *${usedPrefix}${command} voz* → Alternar modo Voz (Áudio)\n` +
       `• *${usedPrefix}${command} ia* → Alternar modo IA (Gemini)`
     )
   }
 
-  // Alterna o estado mestre se não passou subcomando
+  // Alterna o estado mestre se chamado sem argumentos
   global.modoAusente = !global.modoAusente
+  saveState()
 
   if (global.modoAusente) {
     await m.reply(
