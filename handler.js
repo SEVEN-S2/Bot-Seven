@@ -69,9 +69,33 @@ export async function handler(conn, rawMsg) {
       const senderNum = (m.sender || '').replace(/[^0-9]/g, '')
       const isOwnerSender = (global.owner || []).some(([n]) => n === senderNum)
       if (!isOwnerSender) {
-        const msgAusente = MENSAGEM_AUSENTE ||
-          '❌ *ESTE USUÁRIO ENCONTRA-SE INDISPONÍVEL NO MOMENTO. VOLTE MAIS TARDE!*\n\n🤖 _Mensagem automática - BOT SEVEN_'
-        await conn.sendMessage(m.chat, { text: msgAusente })
+        try {
+          const offlineModule = await import('./plugins/tools-offline.js')
+          let replyText = offlineModule.MENSAGEM_AUSENTE || '❌ *ESTE USUÁRIO ENCONTRA-SE INDISPONÍVEL NO MOMENTO. VOLTE MAIS TARDE!*'
+
+          // Opção 11: Resposta Inteligente via IA (Gemini)
+          if (global.modoAusenteIA && offlineModule.getOfflineIAReply) {
+            let iaReply = await offlineModule.getOfflineIAReply(m.chat, m.text || '')
+            if (iaReply) {
+              replyText = iaReply
+            }
+          }
+
+          // Opção 10: Resposta em Áudio (TTS)
+          if (global.modoAusenteVoz && offlineModule.getTTSAudio) {
+            try {
+              let audioBuf = await offlineModule.getTTSAudio(replyText)
+              await conn.sendMessage(m.chat, { audio: audioBuf, mimetype: 'audio/mp4', ptt: true }, { quoted: m })
+              return
+            } catch (ttsErr) {
+              console.error('[ERRO TTS MODO AUSENTE]:', ttsErr.message)
+            }
+          }
+
+          await conn.sendMessage(m.chat, { text: replyText }, { quoted: m })
+        } catch (err) {
+          console.error('[ERRO MODO AUSENTE]:', err.message)
+        }
         return // Não processa nenhum outro comando
       }
     }

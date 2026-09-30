@@ -247,3 +247,4 @@ handler.command = ['ia', 'gpt', 'chatgpt', 'aion', 'aioff']
 handler.all = true
 
 export default handler
+export { askAI }
