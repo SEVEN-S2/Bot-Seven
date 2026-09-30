@@ -19,8 +19,18 @@ export async function handler(conn, rawMsg) {
   try {
     const m = smsg(conn, rawMsg)
     if (!m) return
-    // Ignora apenas mensagens automáticas geradas pela própria biblioteca Baileys para evitar loops
+    // Ignora mensagens automáticas geradas pela própria biblioteca Baileys
     if (m.isBaileys) return
+
+    // Ignora mensagens antigas/históricas do passado enviadas há mais de 30 segundos
+    const nowInSeconds = Math.floor(Date.now() / 1000)
+    const msgTimestamp = typeof m.messageTimestamp === 'number' 
+      ? m.messageTimestamp 
+      : (m.messageTimestamp?.low || 0)
+    
+    if (msgTimestamp && (nowInSeconds - msgTimestamp > 30)) {
+      return
+    }
 
     const prefix = global.prefix || /^[./!#]/
     const isPrefix = prefix.test(m.text)
