@@ -40,9 +40,12 @@ export async function handler(conn, rawMsg) {
     const text = args.join(' ')
     const cmd = (command || '').toLowerCase()
 
-    // O próprio número do bot (fromMe) e os números configurados são considerados Dono
+    // O próprio número do bot (fromMe), o número conectado e os números em global.owner são considerados Dono
+    const botNumber = (conn.user?.id || conn.user?.jid || '').split(':')[0].replace(/[^0-9]/g, '')
     const senderNumber = (m.sender || '').replace(/[^0-9]/g, '')
-    const isOwner = m.fromMe || (global.owner || []).some(([number]) => number === senderNumber)
+    const isOwner = m.fromMe || 
+      (botNumber && senderNumber === botNumber) ||
+      (global.owner || []).some(([number]) => (number || '').replace(/[^0-9]/g, '') === senderNumber)
 
     // Antilink: detecta e remove links de grupos WhatsApp
     if (m.isGroup && isAntilinkActive && isAntilinkActive(m.chat)) {

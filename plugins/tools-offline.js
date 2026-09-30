@@ -30,7 +30,13 @@ async function getTTSAudio(text, lang = 'pt') {
     spokenText = spokenText.slice(0, 197) + '...'
   }
   let url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${lang}&client=tw-ob`
-  let res = await axios.get(url, { responseType: 'arraybuffer', timeout: 8000 })
+  let res = await axios.get(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    },
+    responseType: 'arraybuffer',
+    timeout: 10000
+  })
   return Buffer.from(res.data)
 }
 
