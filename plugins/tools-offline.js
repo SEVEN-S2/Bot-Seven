@@ -54,6 +54,11 @@ async function getTTSAudio(text, lang = 'pt') {
  * Gera uma resposta contextualizada usando IA se o dono estiver ausente
  */
 async function getOfflineIAReply(chatId, userText) {
+  let apiKey = global.geminiKey || process.env.GEMINI_KEY
+  if (!apiKey) {
+    // Sem chave Gemini: retorna null instantaneamente (0ms) para não atrasar a resposta
+    return null
+  }
   let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma muito curta (máximo 2 frases) com educação, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
   try {
     // Timeout ultra-rápido de 2.5 segundos para resposta instantânea
