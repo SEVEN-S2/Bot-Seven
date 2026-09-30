@@ -44,14 +44,14 @@ async function getTTSAudio(text, lang = 'pt') {
  * Gera uma resposta contextualizada usando IA se o dono estiver ausente
  */
 async function getOfflineIAReply(chatId, userText) {
-  let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma curta (máximo 2 frases) com educação, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
+  let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma muito curta (máximo 2 frases) com educação, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
   try {
-    // Timeout de 8 segundos para não travar
-    let timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('IA Timeout')), 8000))
+    // Timeout ultra-rápido de 2.5 segundos para resposta instantânea
+    let timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('IA Timeout')), 2500))
     let reply = await Promise.race([askAI(chatId, prompt), timeoutPromise])
     return reply
   } catch (err) {
-    console.warn('[MODO AUSENTE IA FALHOU/TIMEOUT]:', err.message)
+    console.warn('[MODO AUSENTE IA FALLBACK INSTANTÂNEO]:', err.message)
     return null
   }
 }
