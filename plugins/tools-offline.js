@@ -47,7 +47,7 @@ O usuário encontra-se indisponível no momento.
 Por favor, deixe sua mensagem que ela será visualizada assim que possível.`
 
 // Mensagem em fala natural para sintetizador de voz (sem emojis ou caracteres especiais)
-const MENSAGEM_VOZ_AUSENTE = "Olá. O usuário encontra-se indisponível no momento. Por favor, deixe sua mensagem que ela será visualizada e respondida assim que possível. Obrigado."
+const MENSAGEM_VOZ_AUSENTE = "Ei! Meu dono encontra-se indisponível, volte mais tarde ou deixe um recado e irei enviar ao meu dono se for uma emergência. Obrigado!"
 
 /**
  * Limpa texto para leitura natural pelo sintetizador de voz (remove emojis e simbolos)
