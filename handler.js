@@ -65,39 +65,38 @@ export async function handler(conn, rawMsg) {
 
     // ─── MODO AUSENTE ────────────────────────────────────────────────────────
     // Se ativado, responde automaticamente no privado a quem não for o dono
-    if (global.modoAusente && !m.isGroup && !m.fromMe) {
-      const senderNum = (m.sender || '').replace(/[^0-9]/g, '')
-      const isOwnerSender = (global.owner || []).some(([n]) => n === senderNum)
-      if (!isOwnerSender) {
-        try {
-          const offlineModule = await import('./plugins/tools-offline.js')
-          let replyText = offlineModule.MENSAGEM_AUSENTE || '❌ *ESTE USUÁRIO ENCONTRA-SE INDISPONÍVEL NO MOMENTO. VOLTE MAIS TARDE!*'
+    if (global.modoAusente && !m.isGroup && !isOwner) {
+      try {
+        console.log(chalk.yellow(`[MODO AUSENTE] Respondendo a ${m.pushName || m.sender}...`))
+        const offlineModule = await import('./plugins/tools-offline.js')
+        let replyText = offlineModule.MENSAGEM_AUSENTE || '❌ *ESTE USUÁRIO ENCONTRA-SE INDISPONÍVEL NO MOMENTO. VOLTE MAIS TARDE!*'
 
-          // Opção 11: Resposta Inteligente via IA (Gemini)
-          if (global.modoAusenteIA && offlineModule.getOfflineIAReply) {
-            let iaReply = await offlineModule.getOfflineIAReply(m.chat, m.text || '')
-            if (iaReply) {
-              replyText = iaReply
-            }
+        // Opção 11: Resposta Inteligente via IA (Gemini)
+        if (global.modoAusenteIA && offlineModule.getOfflineIAReply) {
+          let iaReply = await offlineModule.getOfflineIAReply(m.chat, m.text || '')
+          if (iaReply) {
+            replyText = iaReply
           }
-
-          // Opção 10: Resposta em Áudio (TTS)
-          if (global.modoAusenteVoz && offlineModule.getTTSAudio) {
-            try {
-              let audioBuf = await offlineModule.getTTSAudio(replyText)
-              await conn.sendMessage(m.chat, { audio: audioBuf, mimetype: 'audio/mp4', ptt: true }, { quoted: m })
-              return
-            } catch (ttsErr) {
-              console.error('[ERRO TTS MODO AUSENTE]:', ttsErr.message)
-            }
-          }
-
-          await conn.sendMessage(m.chat, { text: replyText }, { quoted: m })
-        } catch (err) {
-          console.error('[ERRO MODO AUSENTE]:', err.message)
         }
-        return // Não processa nenhum outro comando
+
+        // Opção 10: Resposta em Áudio (TTS)
+        if (global.modoAusenteVoz && offlineModule.getTTSAudio) {
+          try {
+            let audioBuf = await offlineModule.getTTSAudio(replyText)
+            await conn.sendMessage(m.chat, { audio: audioBuf, mimetype: 'audio/mp4', ptt: true }, { quoted: m })
+            console.log(chalk.green(`[MODO AUSENTE] Áudio enviado para ${m.sender}`))
+            return
+          } catch (ttsErr) {
+            console.error(chalk.red('[ERRO TTS MODO AUSENTE]:'), ttsErr.message)
+          }
+        }
+
+        await conn.sendMessage(m.chat, { text: replyText }, { quoted: m })
+        console.log(chalk.green(`[MODO AUSENTE] Texto enviado para ${m.sender}`))
+      } catch (err) {
+        console.error(chalk.red('[ERRO MODO AUSENTE]:'), err.message)
       }
+      return // Não processa nenhum outro comando do usuário comum enquanto ausente
     }
     // ────────────────────────────────────────────────────────────────────────
 

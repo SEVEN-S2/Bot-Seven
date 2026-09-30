@@ -5,9 +5,6 @@ import { askAI } from './tools-ia.js'
 // ============================================
 // 🔴 MODO AUSENTE COMPLETO - BOT SEVEN
 // ============================================
-// Opção 10: Resposta em áudio (TTS)
-// Opção 11: Resposta inteligente com IA (Gemini)
-// ============================================
 
 global.modoAusente = global.modoAusente || false
 global.modoAusenteVoz = global.modoAusenteVoz || false
@@ -33,7 +30,7 @@ async function getTTSAudio(text, lang = 'pt') {
     spokenText = spokenText.slice(0, 197) + '...'
   }
   let url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${lang}&client=tw-ob`
-  let res = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 })
+  let res = await axios.get(url, { responseType: 'arraybuffer', timeout: 8000 })
   return Buffer.from(res.data)
 }
 
@@ -41,12 +38,14 @@ async function getTTSAudio(text, lang = 'pt') {
  * Gera uma resposta contextualizada usando IA se o dono estiver ausente
  */
 async function getOfflineIAReply(chatId, userText) {
-  let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda à mensagem do cliente/contato a seguir tirando dúvidas se possível com educação e simpatia, mas SEMPRE deixando claro que o dono está ausente e visualizará a mensagem assim que retornar.]\n\nMensagem do contato: "${userText}"`
+  let prompt = `[SISTEMA: O usuário que você representa (dono do bot) está AUSENTE/INDISPONÍVEL no momento. Responda de forma curta (máximo 2 frases) com educação, avisando que o dono visualizará em breve.]\n\nMensagem do contato: "${userText}"`
   try {
-    let reply = await askAI(chatId, prompt)
+    // Timeout de 8 segundos para não travar
+    let timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('IA Timeout')), 8000))
+    let reply = await Promise.race([askAI(chatId, prompt), timeoutPromise])
     return reply
   } catch (err) {
-    console.warn('[MODO AUSENTE IA FALHOU]:', err.message)
+    console.warn('[MODO AUSENTE IA FALHOU/TIMEOUT]:', err.message)
     return null
   }
 }
@@ -58,19 +57,33 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
 
   let sub = (args[0] || '').toLowerCase()
 
+  if (sub === 'on' || sub === 'ativar') {
+    global.modoAusente = true
+    return m.reply(`✅ *MODO AUSENTE ATIVADO!*`)
+  }
+
+  if (sub === 'off' || sub === 'desativar') {
+    global.modoAusente = false
+    return m.reply(`🔴 *MODO AUSENTE DESATIVADO!*`)
+  }
+
   if (sub === 'voz' || sub === 'audio') {
     global.modoAusenteVoz = !global.modoAusenteVoz
+    if (global.modoAusenteVoz) global.modoAusente = true
     return m.reply(
-      `🗣️ *RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n\n` +
-      `${global.modoAusenteVoz ? '🎙️ As respostas ausentes serão enviadas em formato de ÁUDIO de voz.' : '💬 As respostas ausentes serão enviadas em formato de TEXTO.'}`
+      `🗣️ *RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n` +
+      `📌 *Modo Ausente:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n\n` +
+      `${global.modoAusenteVoz ? '🎙️ Respostas serão enviadas em formato de ÁUDIO.' : '💬 Respostas serão enviadas em TEXTO.'}`
     )
   }
 
   if (sub === 'ia' || sub === 'gemini' || sub === 'ai') {
     global.modoAusenteIA = !global.modoAusenteIA
+    if (global.modoAusenteIA) global.modoAusente = true
     return m.reply(
-      `🧠 *RESPOSTA INTELIGENTE COM IA*: ${global.modoAusenteIA ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n\n` +
-      `${global.modoAusenteIA ? '🤖 A IA (Gemini) responderá às dúvidas dos contatos avisando que você está ausente.' : '📜 Será enviada a mensagem padrão de ausente.'}`
+      `🧠 *RESPOSTA INTELIGENTE COM IA*: ${global.modoAusenteIA ? '✅ *ATIVADA*' : '❌ *DESATIVADA*'}\n` +
+      `📌 *Modo Ausente:* ${global.modoAusente ? '🟢 ATIVADO' : '🔴 DESATIVADO'}\n\n` +
+      `${global.modoAusenteIA ? '🤖 A IA responderá às dúvidas avisando que você está ausente.' : '📜 Será enviada a mensagem padrão.'}`
     )
   }
 
@@ -82,13 +95,13 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
       `┃ 🧠 *Modo IA (Gemini):* ${global.modoAusenteIA ? '✅ ATIVADO' : '❌ DESATIVADO'}\n` +
       `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣\n\n` +
       `💡 *Comandos:* \n` +
-      `• *${usedPrefix}${command}* → Liga/Desliga o modo ausente\n` +
-      `• *${usedPrefix}${command} voz* → Liga/Desliga resposta por Áudio\n` +
-      `• *${usedPrefix}${command} ia* → Liga/Desliga resposta por IA inteligente`
+      `• *${usedPrefix}${command} on / off* → Ativar ou Desativar\n` +
+      `• *${usedPrefix}${command} voz* → Alternar modo Voz (Áudio)\n` +
+      `• *${usedPrefix}${command} ia* → Alternar modo IA (Gemini)`
     )
   }
 
-  // Alterna o estado mestre
+  // Alterna o estado mestre se não passou subcomando
   global.modoAusente = !global.modoAusente
 
   if (global.modoAusente) {
@@ -96,12 +109,12 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
       `╭━━━〔 ✅ *MODO AUSENTE ATIVADO* 〕━━━⬣\n` +
       `┃\n` +
       `┃ 🔴 Responderei automaticamente a qualquer\n` +
-      `┃ 🔴 mensagem privada (mesmo online/offline).\n` +
+      `┃ 🔴 mensagem privada recebida.\n` +
       `┃\n` +
       `┃ 🗣️ *Áudio (TTS):* ${global.modoAusenteVoz ? '✅ ON' : '❌ OFF'}\n` +
       `┃ 🧠 *IA (Gemini):* ${global.modoAusenteIA ? '✅ ON' : '❌ OFF'}\n` +
       `┃\n` +
-      `┃ 📌 Para desativar: *${usedPrefix}${command}*\n` +
+      `┃ 📌 Desativar: *${usedPrefix}${command} off*\n` +
       `┃ 💡 Opções: *${usedPrefix}${command} voz* | *${usedPrefix}${command} ia*\n` +
       `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━⬣`
     )
@@ -115,7 +128,7 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   }
 }
 
-handler.help = ['ausente [voz/ia/status]']
+handler.help = ['ausente [on/off/voz/ia/status]']
 handler.tags = ['tools']
 handler.command = ['ausente', 'offline', 'away']
 handler.owner = true
