@@ -147,6 +147,24 @@ async function startBot() {
       }
     } else if (connection === 'open') {
       console.log(chalk.bold.green(`\n✅ ${global.botname} CONECTADO COM SUCESSO!\n`))
+
+      // ─── MANTER NÚMERO ONLINE ────────────────────────────────────────────
+      // Marca o número como "online" imediatamente ao conectar
+      try {
+        await conn.sendPresenceUpdate('available')
+        console.log(chalk.green('🟢 Presença definida como ONLINE'))
+      } catch (e) {
+        console.error(chalk.red('Erro ao definir presença:'), e.message)
+      }
+
+      // Mantém o número online a cada 30 segundos (evita ficar "offline")
+      if (global._presenceInterval) clearInterval(global._presenceInterval)
+      global._presenceInterval = setInterval(async () => {
+        try {
+          await conn.sendPresenceUpdate('available')
+        } catch (_) { /* silencioso */ }
+      }, 30_000)
+      // ─────────────────────────────────────────────────────────────────────
     }
   })
 
