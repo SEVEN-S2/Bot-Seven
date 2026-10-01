@@ -20,7 +20,7 @@ function loadState() {
       global.modoAusente = !!data.modoAusente
       global.modoAusenteVoz = !!data.modoAusenteVoz
       global.modoAusenteIA = !!data.modoAusenteIA
-      global.modoAusenteVozTipo = data.modoAusenteVozTipo || 'mocambicano'
+      global.modoAusenteVozTipo = data.modoAusenteVozTipo || 'ines'
     }
   } catch (_) {}
 }
@@ -31,7 +31,7 @@ function saveState() {
       modoAusente: !!global.modoAusente,
       modoAusenteVoz: !!global.modoAusenteVoz,
       modoAusenteIA: !!global.modoAusenteIA,
-      modoAusenteVozTipo: global.modoAusenteVozTipo || 'mocambicano'
+      modoAusenteVozTipo: global.modoAusenteVozTipo || 'ines'
     }, null, 2))
   } catch (_) {}
 }
@@ -40,7 +40,7 @@ function saveState() {
 global.modoAusente = global.modoAusente || false
 global.modoAusenteVoz = global.modoAusenteVoz || false
 global.modoAusenteIA = global.modoAusenteIA || false
-global.modoAusenteVozTipo = global.modoAusenteVozTipo || 'mocambicano'
+global.modoAusenteVozTipo = global.modoAusenteVozTipo || 'ines'
 loadState()
 
 // Mensagem de resposta automática padrão por texto (sem emojis)
@@ -78,35 +78,20 @@ async function getTTSAudio(text, voiceName = null) {
     spokenText = spokenText.slice(0, 297) + '...'
   }
 
-  let voiceType = (voiceName || global.modoAusenteVozTipo || 'mocambicano').toLowerCase()
+  let voiceType = (voiceName || global.modoAusenteVozTipo || 'ines').toLowerCase()
   let mp3Buf = null
 
-  // Mapeamento de sotaques
-  let langMap = {
-    'mocambicano': 'pt-MZ',
-    'moçambicano': 'pt-MZ',
-    'mz': 'pt-MZ',
-    'moçambique': 'pt-MZ',
-    'mocambique': 'pt-MZ',
-    'angolano': 'pt-AO',
-    'ao': 'pt-AO',
-    'angola': 'pt-AO',
-    'ines': 'pt-PT',
-    'inês': 'pt-PT',
-    'portugal': 'pt-PT',
-    'pt': 'pt-PT',
-    'vitoria': 'pt-BR',
-    'vitória': 'pt-BR',
-    'camila': 'pt-BR',
-    'br': 'pt-BR',
-    'brasil': 'pt-BR'
-  }
+  // Configuração por tipo de sotaque/modelo:
+  // PALOP (Moçambique, Angola, Portugal) usam o motor de fonética pt-PT / Ines / pt_001
+  let isPalop = ['ines', 'inês', 'pt', 'portugal', 'mocambicano', 'moçambicano', 'mz', 'mocambique', 'moçambique', 'angolano', 'ao', 'angola'].includes(voiceType)
+  let isCamila = ['camila'].includes(voiceType)
 
-  let targetLang = langMap[voiceType] || 'pt-MZ'
+  let ttVoice = isPalop ? 'pt_001' : (isCamila ? 'br_003' : 'br_001')
+  let seVoice = isPalop ? 'Ines' : (isCamila ? 'Camila' : 'Vitoria')
+  let googleLang = isPalop ? 'pt-PT' : 'pt-BR'
 
-  // 1. Tentar TikTok TTS se for BR ou PT
+  // 1. Tentar TikTok TTS
   try {
-    let ttVoice = (targetLang === 'pt-BR') ? 'br_001' : 'pt_001'
     let resTt = await axios.post('https://tiktok-tts-api.vercel.app/api/tts', {
       text: spokenText,
       voice: ttVoice
@@ -116,10 +101,9 @@ async function getTTSAudio(text, voiceName = null) {
     }
   } catch (_) {}
 
-  // 2. Tentar StreamElements (Amazon Polly - Vitoria/Camila/Ines) se aplicável
-  if (!mp3Buf && (targetLang === 'pt-BR' || targetLang === 'pt-PT')) {
+  // 2. Tentar StreamElements (Amazon Polly)
+  if (!mp3Buf) {
     try {
-      let seVoice = (targetLang === 'pt-PT') ? 'Ines' : 'Vitoria'
       let urlSe = `https://api.streamelements.com/kappa/v2/speech?voice=${seVoice}&text=${encodeURIComponent(spokenText)}`
       let resSe = await axios.get(urlSe, {
         headers: {
@@ -134,9 +118,9 @@ async function getTTSAudio(text, voiceName = null) {
     } catch (_) {}
   }
 
-  // 3. Google Translate TTS com sotaque exato (pt-MZ = Moçambique, pt-AO = Angola, pt-PT = Portugal, pt-BR = Brasil)
+  // 3. Fallback: Google Translate TTS com sotaque exato
   if (!mp3Buf) {
-    let urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${targetLang}&client=tw-ob`
+    let urlGoogle = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(spokenText)}&tl=${googleLang}&client=tw-ob`
     let resG = await axios.get(urlGoogle, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -197,33 +181,26 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
   }
 
   if (sub === 'voz' || sub === 'audio') {
-    if (opt === 'mocambicano' || opt === 'moçambicano' || opt === 'mz') {
-      global.modoAusenteVozTipo = 'mocambicano'
-      global.modoAusenteVoz = true
-      global.modoAusente = true
-      saveState()
-      return m.reply(`*VOZ DEFINIDA*: Sotaque de Moçambique (pt-MZ)`)
-    }
-    if (opt === 'angolano' || opt === 'ao') {
-      global.modoAusenteVozTipo = 'angolano'
-      global.modoAusenteVoz = true
-      global.modoAusente = true
-      saveState()
-      return m.reply(`*VOZ DEFINIDA*: Sotaque de Angola (pt-AO)`)
-    }
-    if (opt === 'ines' || opt === 'inês' || opt === 'pt') {
+    if (opt === 'mocambicano' || opt === 'moçambicano' || opt === 'mz' || opt === 'angolano' || opt === 'ao' || opt === 'ines' || opt === 'inês' || opt === 'pt') {
       global.modoAusenteVozTipo = 'ines'
       global.modoAusenteVoz = true
       global.modoAusente = true
       saveState()
-      return m.reply(`*VOZ DEFINIDA*: Sotaque de Portugal (pt-PT)`)
+      return m.reply(`*VOZ DEFINIDA*: Sotaque PALOP / Portugal (Feminina Inês)`)
     }
     if (opt === 'vitoria' || opt === 'vitória' || opt === 'br') {
       global.modoAusenteVozTipo = 'vitoria'
       global.modoAusenteVoz = true
       global.modoAusente = true
       saveState()
-      return m.reply(`*VOZ DEFINIDA*: Sotaque do Brasil (pt-BR)`)
+      return m.reply(`*VOZ DEFINIDA*: Sotaque Brasil (Feminina Vitória)`)
+    }
+    if (opt === 'camila') {
+      global.modoAusenteVozTipo = 'camila'
+      global.modoAusenteVoz = true
+      global.modoAusente = true
+      saveState()
+      return m.reply(`*VOZ DEFINIDA*: Sotaque Brasil (Feminina Camila Jovem)`)
     }
 
     global.modoAusenteVoz = !global.modoAusenteVoz
@@ -231,13 +208,12 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
     saveState()
     return m.reply(
       `*RESPOSTA EM ÁUDIO (TTS)*: ${global.modoAusenteVoz ? 'ATIVADA' : 'DESATIVADA'}\n` +
-      `*Sotaque/Voz Atual:* ${global.modoAusenteVozTipo || 'mocambicano'}\n` +
+      `*Sotaque/Voz Atual:* ${global.modoAusenteVozTipo || 'ines'}\n` +
       `*Modo Ausente:* ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
       `Opções de Sotaques:\n` +
-      `• *${usedPrefix}${command} voz mocambicano* (Moçambique)\n` +
-      `• *${usedPrefix}${command} voz angolano* (Angola)\n` +
-      `• *${usedPrefix}${command} voz ines* (Portugal)\n` +
-      `• *${usedPrefix}${command} voz vitoria* (Brasil)`
+      `• *${usedPrefix}${command} voz ines* (PALOP / Portugal / Moçambique / Angola)\n` +
+      `• *${usedPrefix}${command} voz vitoria* (Brasil Suave)\n` +
+      `• *${usedPrefix}${command} voz camila* (Brasil Jovem)`
     )
   }
 
@@ -257,11 +233,11 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
       `*PAINEL MODO AUSENTE*\n` +
       `• Estado Geral: ${global.modoAusente ? 'ATIVADO' : 'DESATIVADO'}\n` +
       `• Modo Voz (TTS): ${global.modoAusenteVoz ? 'ATIVADO' : 'DESATIVADO'}\n` +
-      `• Sotaque Selecionado: ${global.modoAusenteVozTipo || 'mocambicano'}\n` +
+      `• Sotaque Selecionado: ${global.modoAusenteVozTipo || 'ines'}\n` +
       `• Modo IA (Gemini): ${global.modoAusenteIA ? 'ATIVADO' : 'DESATIVADO'}\n\n` +
       `Comandos:\n` +
       `• *${usedPrefix}${command} on / off* -> Ativar ou Desativar\n` +
-      `• *${usedPrefix}${command} voz [mocambicano/angolano/ines/vitoria]* -> Escolher Sotaque\n` +
+      `• *${usedPrefix}${command} voz [ines/vitoria/camila]* -> Escolher Sotaque\n` +
       `• *${usedPrefix}${command} ia* -> Alternar modo IA`
     )
   }
@@ -274,7 +250,7 @@ let handler = async (m, { conn, args, isOwner, usedPrefix, command }) => {
     await m.reply(
       `*MODO AUSENTE ATIVADO*\n\n` +
       `Responderei automaticamente a qualquer mensagem privada recebida.\n\n` +
-      `• Áudio (TTS): ${global.modoAusenteVoz ? 'ON (' + (global.modoAusenteVozTipo || 'mocambicano') + ')' : 'OFF'}\n` +
+      `• Áudio (TTS): ${global.modoAusenteVoz ? 'ON (' + (global.modoAusenteVozTipo || 'ines') + ')' : 'OFF'}\n` +
       `• IA (Gemini): ${global.modoAusenteIA ? 'ON' : 'OFF'}\n\n` +
       `Para desativar: *${usedPrefix}${command} off*`
     )
